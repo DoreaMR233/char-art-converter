@@ -9,6 +9,8 @@ import path from 'path'
 
 // 获取环境变量中的BASE_PATH，如果未设置则默认为空字符串
 const basePath = process.env.BASE_PATH || '';
+// 获取环境变量API_URL，如果未设置则为http://localhost:8080
+const apiUrl = process.env.API_URL || 'http://localhost:8080';
 
 /**
  * Vite配置导出
@@ -23,6 +25,7 @@ export default defineConfig({
     vue(),                // 启用Vue 3支持
   ],
   base: basePath ? `/${basePath}/` : '/',  // 设置资源基础路径
+  
   /**
    * 开发服务器配置
    * @property {Object} server - 服务器选项
@@ -35,7 +38,7 @@ export default defineConfig({
      */
     proxy: {
       '/api': {
-        target: 'http://localhost:8080', // 后端API服务器地址
+        target: apiUrl, // 后端API服务器地址
         changeOrigin: true, // 修改请求头中的Host为目标URL
         ws: true,
         rewrite: (path) => path,
