@@ -1,8 +1,6 @@
 package com.doreamr233.charartconverter.util;
 
-import cn.hutool.http.HttpUtil;
-import cn.hutool.http.HttpResponse;
-import cn.hutool.http.HttpStatus;
+import cn.hutool.http.*;
 import com.doreamr233.charartconverter.exception.ServiceException;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +13,6 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.IOException;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -32,8 +29,48 @@ import java.util.Map;
 @Slf4j
 public class WebpProcessorClient {
 
+    /**
+     * WebP处理服务的基本URL
+     */
     @Value("${webp-processor.url}")
     private String serviceBaseUrl;
+
+    /**
+     * WebP处理服务的连接超时时间（毫秒）
+     */
+    @Value("${webp-processor.connection-timeout}")
+    private int maxTimeout;
+
+    /**
+     * WebP处理服务的最大重试次数
+     */
+    @Value("${webp-processor.max-retries}")
+    private int maxRetriesCount;
+
+    /**
+     * 执行带有重试机制的HTTP请求
+     *
+     * @param request HTTP请求
+     * @return HTTP响应
+     * @throws HttpException 如果请求失败
+     */
+    private HttpResponse executeWithRetry(HttpRequest request) throws HttpException {
+        HttpResponse response = null;
+        for (int i = 0; i <= maxRetriesCount; i++) {
+            try {
+                log.info("WebP处理服务第{}次尝试，共{}次", i+1,maxRetriesCount);
+                // 执行 HTTP 请求
+                response = request.execute();
+                if (response.isOk()) {
+                    return response;
+                }
+            } catch (Exception e) {
+                // 发生异常时打印堆栈信息
+                log.info("WebP处理服务第{}次尝试失败", i+1);
+            }
+        }
+        throw new HttpException("请求超时并达到重试次数上限，无法获取到响应！");
+    }
 
     /**
      * 检查WebP处理服务是否可用
@@ -42,7 +79,7 @@ public class WebpProcessorClient {
      */
     public boolean isServiceAvailable() {
         try {
-            HttpResponse response = HttpUtil.createGet(serviceBaseUrl + "/api/health").execute();
+            HttpResponse response = executeWithRetry(HttpUtil.createGet(serviceBaseUrl + "/api/health").timeout(maxTimeout));
             return response.getStatus() == HttpStatus.HTTP_OK;
         } catch (Exception e) {
             log.warn("WebP处理服务不可用: {}", e.getMessage());
@@ -65,9 +102,10 @@ public class WebpProcessorClient {
         formMap.put("image", webpFile);
         
         // 发送请求并获取响应
-        HttpResponse response = HttpUtil.createPost(serviceBaseUrl + "/api/process-webp")
+        HttpResponse response = executeWithRetry(HttpUtil.createPost(serviceBaseUrl + "/api/process-webp")
                 .form(formMap)
-                .execute();
+                .timeout(maxTimeout)
+        );
         
         if (response.getStatus() != HttpStatus.HTTP_OK) {
             throw new ServiceException("WebP处理服务返回错误: " + response.getStatus() + " " + response.body());
@@ -148,10 +186,10 @@ public class WebpProcessorClient {
         requestBody.put("delays", delays);
         
         // 使用Hutool的HttpUtil发送JSON请求
-        HttpResponse response = HttpUtil.createPost(serviceBaseUrl + "/api/create-webp-animation")
+        HttpResponse response = executeWithRetry(HttpUtil.createPost(serviceBaseUrl + "/api/create-webp-animation")
                 .header("Content-Type", "application/json")
                 .body(requestBody.toString())
-                .execute();
+                .timeout(maxTimeout));
         
         if (response.getStatus() != HttpStatus.HTTP_OK) {
             throw new ServiceException("WebP动画创建服务返回错误: " + response.getStatus() + " " + response.body());
