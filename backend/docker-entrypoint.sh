@@ -8,6 +8,7 @@ CONFIG_FILE="/app/config/application.properties"
 # 确保配置目录和数据目录存在
 mkdir -p /app/config
 mkdir -p /app/data
+mkdir -p /app/logs
 
 # 复制模板配置文件
 cp "$TEMPLATE_CONFIG_FILE" "$CONFIG_FILE"
@@ -87,6 +88,14 @@ if [ ! -z "$LOG_LEVEL" ]; then
   sed -i "s/logging.level.com.doreamr233.charartconverter=.*/logging.level.com.doreamr233.charartconverter=$LOG_LEVEL/g" "$CONFIG_FILE"
 fi
 
+if [ ! -z "$LOG_FILE_MAX_SIZE" ]; then
+  sed -i "s/logging.logback.rollingpolicy.max-file-size=.*/logging.logback.rollingpolicy.max-file-size=$LOG_FILE_MAX_SIZE/g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$LOG_FILE_MAX_HISTORY" ]; then
+  sed -i "s/logging.logback.rollingpolicy.max-history=.*/logging.logback.rollingpolicy.max-history=$LOG_FILE_MAX_HISTORY/g" "$CONFIG_FILE"
+fi
+
 # 自定义字符画默认配置
 if [ ! -z "$DEFAULT_DENSITY" ]; then
   sed -i "s/char-art.default-density=.*/char-art.default-density=$DEFAULT_DENSITY/g" "$CONFIG_FILE"
@@ -104,6 +113,7 @@ echo "使用以下配置启动char-art-converter："
 echo "Redis: $REDIS_HOST:$REDIS_PORT"
 echo "服务端口: $SERVER_PORT"
 echo "日志等级: $LOG_LEVEL"
+echo "日志文件: ${LOG_FILE_PATH:-/app/logs/char-art-converter.log}"
 echo "WebP处理器: $WEBP_PROCESSOR_URL (Enabled: $WEBP_PROCESSOR_ENABLED)"
 
 # 启动应用

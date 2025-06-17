@@ -159,6 +159,7 @@ docker logs char-art-backend
 docker run -d --name char-art-backend \
   -p 8080:8080 \
   -v char-art-data:/app/data \
+  -v char-art-logs:/app/logs \
   char-art-backend:latest
 ```
 
@@ -178,6 +179,7 @@ docker run -d --name char-art-backend \
   -e REDIS_HOST=redis \
   --link redis:redis \
   -v char-art-data:/app/data \
+  -v char-art-logs:/app/logs \
   char-art-backend:latest
 ```
 
@@ -195,11 +197,12 @@ docker run -d --name char-art-backend \
 
 #### 字符画缓存配置
 - `CHAR_ART_CACHE_TTL`: 缓存过期时间，单位秒 (默认: 3600)
+- `CHAR_ART_CACHE_DEFAULT_KEY_PREFIX`: 缓存键前缀 (默认: char-art:text:)
 
 #### WebP处理服务配置
 - `WEBP_PROCESSOR_URL`: WebP处理服务URL (Docker Compose默认: http://webp-processor:8081, Docker Run默认: http://localhost:8081)
 - `WEBP_PROCESSOR_ENABLED`: 是否启用WebP处理服务 (默认: true)
-- `WEBP_PROCESSOR_CONNECTION_TIMEOUT`: 连接超时时间 (默认: 5000)
+- `WEBP_PROCESSOR_CONNECTION_TIMEOUT`: 连接超时时间 (默认: 600000)
 - `WEBP_PROCESSOR_MAX_RETRIES`: 最大重试次数 (默认: 2)
 
 #### 服务器配置
@@ -211,6 +214,8 @@ docker run -d --name char-art-backend \
 
 #### 日志配置
 - `LOG_LEVEL`: 日志级别 (默认: INFO)
+- `LOG_FILE_MAX_SIZE`: 日志文件最大大小 (默认: 10MB)
+- `LOG_FILE_MAX_HISTORY`: 日志文件保留历史数量 (默认: 30)
 
 #### 字符画默认配置
 - `DEFAULT_DENSITY`: 默认字符密度 (默认: medium)
@@ -261,8 +266,9 @@ docker run -d --name char-art-backend \
 
 ### 4. 数据持久化
 
-应用数据和Redis数据存储在Docker卷中，确保不要意外删除这些卷：
+应用数据和日志以及Redis数据存储在Docker卷中，确保不要意外删除这些卷：
 - `char-art-data`: 应用数据
+- `char-art-logs`: 应用日志
 - `redis-data`: Redis数据
 
 ### 5. 日志查看
@@ -276,6 +282,19 @@ docker logs -f char-art-backend
 
 # 查看最近100行日志
 docker logs --tail=100 char-art-backend
+```
+
+您也可以直接查看持久化的日志文件：
+
+```bash
+# 使用Docker Compose进入容器
+docker-compose exec char-art-backend sh -c "cat /app/logs/char-art-converter.log"
+
+# 使用Docker命令进入容器
+docker exec char-art-backend sh -c "cat /app/logs/char-art-converter.log"
+
+# 查看最近100行日志文件内容
+docker exec char-art-backend sh -c "tail -n 100 /app/logs/char-art-converter.log"
 ```
 
 ### 6. 停止和删除容器

@@ -17,10 +17,11 @@ services:
       - REDIS_TIMEOUT=60000
       # 字符画缓存配置
       - CHAR_ART_CACHE_TTL=3600
+      - CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:"
       # WebP处理服务配置
       - WEBP_PROCESSOR_URL=http://webp-processor:8081
       - WEBP_PROCESSOR_ENABLED=true
-      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=5000
+      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000
       - WEBP_PROCESSOR_MAX_RETRIES=2
       # 服务器配置
       - SERVER_PORT=8080
@@ -29,6 +30,8 @@ services:
       - MAX_REQUEST_SIZE=10MB
       # 日志配置
       - LOG_LEVEL=INFO
+      - LOG_FILE_MAX_SIZE=10MB
+      - LOG_FILE_MAX_HISTORY=30
       # 字符画默认配置
       - DEFAULT_DENSITY=medium
       - DEFAULT_COLOR_MODE=grayscale
@@ -39,6 +42,7 @@ services:
       - char-art-network
     volumes:
       - char-art-data:/app/data
+      - char-art-logs:/app/logs
 
   # Redis服务
   redis:
@@ -67,4 +71,5 @@ networks:
 
 volumes:
   char-art-data:
+  char-art-logs:
   redis-data:

@@ -52,6 +52,7 @@ echo %GREEN%[3/4] Æô¶¯×Ö·û»­×ª»»Æ÷ºó¶ËÈÝÆ÷...%NC%
 docker run -d --name %CONTAINER_NAME% ^
     -p %HOST_PORT%:%CONTAINER_PORT% ^
     -v char-art-data:/app/data ^
+    -v char-art-logs:/app/logs ^
     %IMAGE_NAME%:latest
 
 if %ERRORLEVEL% neq 0 (
