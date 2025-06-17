@@ -92,7 +92,8 @@ if %ERRORLEVEL% equ 0 (
     echo   %GREEN%删除容器: docker rm %CONTAINER_NAME% %NC%
     echo.
     echo %YELLOW% 更多配置选项请参考 README.Docker.md 文档 %NC%
-    exit /b 0
+    pause
+	exit /b 0
 )
 
 set /a RETRIES+=1
