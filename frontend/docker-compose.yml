@@ -10,6 +10,7 @@ services:
       - "8080:80"
     environment:
       - BASE_PATH=/char-art/
+      - API_URL=http://char-art-backend:8080
     restart: unless-stopped
     networks:
       - char-art-network
@@ -17,3 +18,6 @@ services:
 networks:
   char-art-network:
     driver: bridge
+    # 如果需要与后端服务共用网络，请取消下面的注释并确保网络名称一致
+    external: true
+    name: char-art-network

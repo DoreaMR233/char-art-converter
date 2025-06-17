@@ -4,10 +4,10 @@ setlocal enabledelayedexpansion
 REM ×Ö·û»­×ª»»Æ÷Ç°¶ËDocker¿ìËÙÆô¶¯½Å±¾ (Windows°æ)
 
 REM ÑÕÉ«¶¨Òå
-set GREEN=[92m
-set YELLOW=[93m
-set RED=[91m
-set NC=[0m
+set GREEN=[92m
+set YELLOW=[93m
+set RED=[91m
+set NC=[0m
 
 REM ¼ì²éDockerÊÇ·ñ°²×°
 docker --version > nul 2>&1
@@ -27,10 +27,30 @@ set IMAGE_NAME=char-art-frontend
 set CONTAINER_NAME=char-art-frontend
 set HOST_PORT=8080
 set CONTAINER_PORT=80
-set BASE_PATH=/char-art/
+set BASE_PATH=
+set API_URL=http://localhost:8080
 
+REM ÏÔÊ¾Ñ¡Ôñ²Ëµ¥
+echo %GREEN%ÇëÑ¡ÔñÆô¶¯·½Ê½:%NC%
+echo %YELLOW%1. Ê¹ÓÃDocker Run£¨µ¥ÈÝÆ÷Ä£Ê½£©%NC%
+echo %YELLOW%2. Ê¹ÓÃDocker Compose£¨¶àÈÝÆ÷Ä£Ê½£©%NC%
+echo.
+
+set /p CHOICE=ÇëÊäÈëÑ¡Ôñ£¨1»ò2£©: 
+
+if "%CHOICE%"=="1" (
+    goto :USE_DOCKER_RUN
+) else if "%CHOICE%"=="2" (
+    goto :USE_DOCKER_COMPOSE
+) else (
+    echo %RED%´íÎó: ÎÞÐ§µÄÑ¡Ôñ£¬ÇëÊäÈë1»ò2%NC%
+	pause
+    exit /b 1
+)
+
+:USE_DOCKER_RUN
 REM ¹¹½¨Docker¾µÏñ
-echo %GREEN%[1/4] ¹¹½¨Docker¾µÏñ...%NC%
+echo %GREEN%[1/5] ¹¹½¨Docker¾µÏñ...%NC%
 docker build -t %IMAGE_NAME%:latest .
 
 if %ERRORLEVEL% neq 0 (
@@ -39,7 +59,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo %GREEN%[2/4] ¼ì²é²¢Í£Ö¹ÒÑ´æÔÚµÄÈÝÆ÷...%NC%
+echo %GREEN%[2/5] ¼ì²é²¢Í£Ö¹ÒÑ´æÔÚµÄÈÝÆ÷...%NC%
 REM ¼ì²éÈÝÆ÷ÊÇ·ñÒÑ´æÔÚ£¬Èç¹û´æÔÚÔòÍ£Ö¹²¢É¾³ý
 docker ps -a | findstr "%CONTAINER_NAME%" > nul
 if %ERRORLEVEL% equ 0 (
@@ -48,12 +68,44 @@ if %ERRORLEVEL% equ 0 (
     docker rm %CONTAINER_NAME% > nul 2>&1
 )
 
+REM ¼ì²éÍøÂçÊÇ·ñ´æÔÚ£¬Èç¹û²»´æÔÚÔò´´½¨
+echo %GREEN%[3/5] ¼ì²éDockerÍøÂç...%NC%
+docker network ls | findstr "char-art-network" > nul
+if %ERRORLEVEL% neq 0 (
+    echo %YELLOW%´´½¨DockerÍøÂç: char-art-network%NC%
+    docker network create char-art-network
+    
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%´íÎó: ´´½¨ÍøÂçÊ§°Ü%NC%
+        pause
+        exit /b 1
+    )
+)
+
+REM ÉèÖÃ»·¾³±äÁ¿
+echo %GREEN%[4/5] ÅäÖÃ»·¾³±äÁ¿...%NC%
+echo %YELLOW%ÇëÎªÃ¿¸ö»·¾³±äÁ¿ÊäÈëÖµ£¬»òÖ±½Ó°´»Ø³µÊ¹ÓÃÄ¬ÈÏÖµ%NC%
+echo.
+
+REM ×ÊÔ´Â·¾¶Ç°×ºÅäÖÃ
+echo %YELLOW%×ÊÔ´Â·¾¶Ç°×ºÅäÖÃ%NC%
+echo ÓÃÓÚÔÚ·Ç¸ùÂ·¾¶²¿ÊðÊ±ÉèÖÃ×ÊÔ´Â·¾¶£¬ÀýÈç²¿ÊðÔÚ http://example.com/char-art/
+set /p BASE_PATH=×ÊÔ´Â·¾¶Ç°×º (Ä¬ÈÏ: ¿Õ): 
+if "%BASE_PATH%"=="" set BASE_PATH=
+
+REM ÏîÄ¿ºó¶ËµØÖ·ÅäÖÃ
+echo %YELLOW%ÏîÄ¿ºó¶ËµØÖ·ÅäÖÃ%NC%
+echo ÓÃÓÚÓëºó¶Ë·þÎñ½øÐÐÍ¨ÐÅ
+set /p API_URL=ÏîÄ¿ºó¶ËµØÖ· (Ä¬ÈÏ: http://localhost:8080): 
+if "%API_URL%"=="" set API_URL=http://localhost:8080
+
 REM Æô¶¯ÈÝÆ÷
-echo %GREEN%[3/4] Æô¶¯×Ö·û»­×ª»»Æ÷Ç°¶ËÈÝÆ÷...%NC%
+echo %GREEN%[5/5] Æô¶¯×Ö·û»­×ª»»Æ÷Ç°¶ËÈÝÆ÷...%NC%
 docker run -d --name %CONTAINER_NAME% ^
     -p %HOST_PORT%:%CONTAINER_PORT% ^
-    -e BASE_PATH=%BASE_PATH% ^
     --network char-art-network ^
+    -e BASE_PATH=%BASE_PATH% ^
+	-e API_URL=%API_URL% ^
     %IMAGE_NAME%:latest
 
 if %ERRORLEVEL% neq 0 (
@@ -62,8 +114,30 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+goto :WAIT_FOR_SERVICES
+
+:USE_DOCKER_COMPOSE
+REM ¼ì²éDocker ComposeÊÇ·ñ°²×°
+docker-compose --version > nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo %RED%´íÎó: Docker ComposeÎ´°²×°¡£ÇëÏÈ°²×°Docker Compose: https://docs.docker.com/compose/install/%NC%
+	pause
+    exit /b 1
+)
+
+echo %GREEN%[1/2] Ê¹ÓÃDocker ComposeÆô¶¯·þÎñ...%NC%
+docker-compose up -d
+
+if %ERRORLEVEL% neq 0 (
+    echo %RED%´íÎó: Æô¶¯·þÎñÊ§°Ü%NC%
+	pause
+    exit /b 1
+)
+
+:WAIT_FOR_SERVICES
+
 REM µÈ´ý·þÎñÆô¶¯
-echo %GREEN%[4/4] µÈ´ý·þÎñÆô¶¯...%NC%
+echo %GREEN%[*] µÈ´ý·þÎñÆô¶¯...%NC%
 timeout /t 5 /nobreak > nul
 
 REM ¼ì²é·þÎñ½¡¿µ×´Ì¬

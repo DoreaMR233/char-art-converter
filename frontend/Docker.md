@@ -14,12 +14,16 @@
     - [访问服务](#访问服务)
     - [停止服务](#停止服务)
   - [使用 Docker Run 部署](#使用-docker-run-部署)
+    - [快速启动](#快速启动)
+      - [Windows用户](#windows用户)
+      - [Linux/Mac用户](#linuxmac用户)
     - [构建镜像](#构建镜像)
     - [运行容器](#运行容器)
     - [验证服务状态](#验证服务状态-1)
   - [配置参数](#配置参数)
     - [环境变量](#环境变量)
       - [资源路径前缀配置](#资源路径前缀配置)
+      - [项目后端地址配置](#项目后端地址配置)
   - [自定义构建](#自定义构建)
     - [修改Dockerfile](#修改dockerfile)
     - [修改启动脚本](#修改启动脚本)
@@ -43,6 +47,8 @@
 ├── Dockerfile          # 用于构建前端服务的Docker镜像
 ├── docker-compose.yml  # 定义服务组合
 ├── docker-entrypoint.sh # 容器启动脚本，用于配置资源路径前缀
+├── run-docker.sh       # Linux/Mac快速启动脚本
+├── run-docker.bat      # Windows快速启动脚本
 └── src/                # 源代码目录
 ```
 
@@ -69,7 +75,7 @@ docker-compose logs -f char-art-frontend
 
 ### 访问服务
 
-服务启动后，可以通过 `http://localhost:8080/char-art/` 访问前端应用。
+服务启动后，可以通过 `http://localhost:8080` 访问前端应用。如果配置了 `BASE_PATH` 环境变量，则应通过 `http://localhost:8080/{BASE_PATH}` 访问。
 
 ### 停止服务
 
@@ -78,6 +84,31 @@ docker-compose down
 ```
 
 ## 使用 Docker Run 部署
+
+### 快速启动
+
+为了简化部署过程，我们提供了快速启动脚本。
+
+#### Windows用户
+
+双击运行 `run-docker.bat` 文件，该脚本将自动执行以下操作：
+
+1. 构建Docker镜像
+2. 停止并删除已存在的同名容器（如果有）
+3. 启动新容器
+4. 检查服务健康状态
+
+#### Linux/Mac用户
+
+```bash
+# 添加执行权限
+chmod +x run-docker.sh
+
+# 运行脚本
+./run-docker.sh
+```
+
+脚本执行完成后，服务将在 `http://localhost:8080` 上可用。
 
 ### 构建镜像
 
@@ -90,7 +121,13 @@ docker build -t char-art-frontend:latest .
 ### 运行容器
 
 ```bash
-docker run -d --name char-art-frontend -p 8080:80 -e BASE_PATH=char-art char-art-frontend:latest
+docker run -d \
+  --name char-art-frontend \
+  --network char-art-network \
+  -p 8080:80 \
+  -e BASE_PATH="" \
+  -e API_URL="http://localhost:8080" \
+  char-art-frontend:latest
 ```
 
 这将以默认配置启动字符画转换器前端服务，并将容器的80端口映射到主机的8080端口。
@@ -105,7 +142,7 @@ docker ps
 docker logs char-art-frontend
 ```
 
-服务启动后，可以通过 `http://localhost:8080/char-art/` 访问前端应用。
+服务启动后，可以通过 `http://localhost:8080` 访问前端应用。
 
 ## 配置参数
 
@@ -121,6 +158,20 @@ docker logs char-art-frontend
 
   ```bash
   docker run -d --name char-art-frontend -p 8080:80 -e BASE_PATH=char-art char-art-frontend:latest
+  ```
+
+#### 项目后端地址配置
+
+- `API_URL`: 项目后端地址，用于与后端服务进行通信 (默认: `http://localhost:8080`)
+
+  例如，如果您的项目后端地址为 `http://1.2.3.4:8080`，则应设置 `API_URL=http://1.2.3.4:8080`
+
+  ```bash
+  docker run -d \
+  --name char-art-frontend \
+  -p 8080:80 \
+  -e API_URL=http://1.2.3.4:8080 \
+  char-art-frontend:latest
   ```
 
 ## 自定义构建
@@ -163,8 +214,19 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 前端应用需要与后端API通信。在生产环境中，您可以：
 
 1. 使用Nginx反向代理将API请求转发到后端服务
-2. 在前端构建时配置正确的API基础URL
+2. 在前端构建时配置正确的API基础URL，确保 `API_URL` 环境变量正确设置
 3. 使用Docker网络连接前端和后端容器
+
+```bash
+# 创建Docker网络
+docker network create char-art-network
+
+# 启动后端服务并连接到网络
+docker run -d --name char-art-backend --network char-art-network -p 8080:8080 char-art-backend:latest
+
+# 启动前端服务并连接到网络，设置API_URL指向后端容器名
+docker run -d --name char-art-frontend --network char-art-network -p 8081:80 -e API_URL=http://char-art-backend:8080 char-art-frontend:latest
+```
 
 ### 4. 日志查看
 
