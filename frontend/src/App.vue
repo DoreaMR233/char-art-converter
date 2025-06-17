@@ -410,7 +410,11 @@ const processImageOriginal = async () => {
     
   } catch (error) {
     console.error('处理失败:', error)
-    ElMessage.error('处理失败: ' + (error.message || '未知错误'))
+    // 优先使用后端返回的错误信息
+    const errorMessage = error.response && error.response.data && error.response.data.message
+      ? error.response.data.message
+      : error.message || '未知错误'
+    ElMessage.error('处理失败: ' + errorMessage)
     progressStage.value = '处理失败'
   } finally {
     // 确保关闭EventSource连接
@@ -508,9 +512,12 @@ onMounted(() => {
   checkHealth()
     .then(response => {
       console.log('后端服务健康状态:', response.data)
-      if (response.data.status === 'UP') {
+      if (response.data.status === 'UP' && response.data.webpProcessor === 'UP') {
+        ElMessage.success('后端服务正常运行')
         console.log('后端服务正常运行')
-      } else {
+      }else if(response.data.status === 'UP' && response.data.webpProcessor === 'OFF') {
+        ElMessage.warning('后端服务正常运行，但WebP处理服务未启用，无法处理Webp格式动图')
+      }else {
         ElMessage.warning('后端服务可能存在问题，请刷新页面重试')
       }
     })

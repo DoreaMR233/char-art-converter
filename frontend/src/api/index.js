@@ -52,8 +52,25 @@ api.interceptors.response.use(
    * @param {Error} error - 响应错误对象
    * @returns {Promise} 返回带有错误信息的Promise
    */
-  error => {
-    console.error('API请求错误:', error)
+  async error => {
+    // 检查响应数据是否为Blob类型
+    if (error.response && error.response.data instanceof Blob && 
+        error.response.data.type === 'application/json') {
+      // 将Blob转换为文本
+      try {
+        const jsonText = await error.response.data.text();
+        // 解析JSON文本
+        const errorData = JSON.parse(jsonText);
+        // 更新错误对象中的数据
+        error.response.data = errorData;
+        console.error('API请求错误:', errorData);
+      } catch (e) {
+        console.error('解析错误响应失败:', e);
+        console.error('原始API请求错误:', error.response.data);
+      }
+    } else {
+      console.error('API请求错误:', error.response ? error.response.data : error.message);
+    }
     return Promise.reject(error)
   }
 )
