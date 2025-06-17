@@ -40,6 +40,7 @@ public class RedisConfig {
      * Redis缓存键前缀
      * 用于区分不同类型的缓存数据，这里特定用于字符画文本缓存
      */
+    @Value("${char-art.cache.default_key_prefix}")
     public static final String CACHE_KEY_PREFIX = "char-art:text:";
 
     /**
