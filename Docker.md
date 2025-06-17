@@ -23,8 +23,22 @@
     - [Linux/Mac用户](#linuxmac用户)
   - [配置参数](#配置参数)
     - [环境变量](#环境变量)
+      - [通用配置](#通用配置)
+      - [后端服务配置](#后端服务配置)
+      - [后端日志配置](#后端日志配置)
+      - [Redis 配置](#redis-配置)
+      - [字符画缓存配置](#字符画缓存配置)
+      - [WebP 处理器配置](#webp-处理器配置)
+      - [Python WebP处理器配置](#python-webp处理器配置)
+      - [字符画默认配置](#字符画默认配置)
+      - [前端配置](#前端配置)
   - [数据持久化](#数据持久化)
   - [常见问题](#常见问题)
+    - [1. 文件上传大小限制](#1-文件上传大小限制)
+    - [2. 日志查看](#2-日志查看)
+    - [3. 停止和删除容器](#3-停止和删除容器)
+    - [4. 应用无法访问](#4-应用无法访问)
+    - [5. 注意事项](#5-注意事项)
 
 ## 前提条件
 
@@ -173,12 +187,22 @@ chmod +x run-all-docker.sh
 - `MAX_FILE_SIZE`: 最大文件大小，默认为 `10MB`
 - `MAX_REQUEST_SIZE`: 最大请求大小，默认为 `10MB`
 
+#### 后端日志配置
+
+- `LOG_LEVEL`: 日志级别 (默认: INFO)
+- `LOG_FILE_MAX_SIZE`: 日志文件最大大小 (默认: 10MB)
+- `LOG_FILE_MAX_HISTORY`: 日志文件保留历史数量 (默认: 30)
+
 #### Redis 配置
 
 - `REDIS_DATABASE`: Redis 数据库索引，默认为 `0`
 - `REDIS_TIMEOUT`: Redis 超时时间（毫秒），默认为 `60000`
-- `CHAR_ART_CACHE_TTL`: 字符画缓存过期时间（秒），默认为 `3600`
+  
+#### 字符画缓存配置
 
+- `CHAR_ART_CACHE_TTL`: 缓存过期时间，单位秒 (默认: 3600)
+- `CHAR_ART_CACHE_DEFAULT_KEY_PREFIX`: 缓存键前缀 (默认: char-art:text:)
+  
 #### WebP 处理器配置
 
 - `WEBP_PROCESSOR_CONNECTION_TIMEOUT`: 连接超时时间（毫秒），默认为 `5000`
@@ -219,6 +243,7 @@ docker run -d \
   -p 80:80 \
   -v /path/to/redis-data:/data \
   -v /path/to/backend-data:/app/backend/data \
+  -v /path/to/backend-log:/app/backend/log \
   -v /path/to/webp-processor-data:/app/webp-processor/data \
   -v /path/to/webp-processor-logs:/app/webp-processor/logs \
   char-art-converter:latest
@@ -252,6 +277,28 @@ docker logs --tail=100 char-art-app
 
 # 使用Docker Compose查看日志
 docker-compose logs -f
+```
+
+您也可以直接查看持久化的日志文件：
+
+```bash
+# 使用Docker Compose进入容器查看后端日志文件内容
+docker-compose exec char-art-app sh -c "cat /app/backend/data/char-art-converter.log"
+
+# 使用Docker命令进入容器查看后端日志文件内容
+docker exec char-art-app sh -c "cat /app/backend/data/char-art-converter.log"
+
+# 查看最近100行后端日志文件内容
+docker exec char-art-app sh -c "tail -n 100 /app/backend/data/char-art-converter.log"
+
+# 使用Docker Compose进入容器查看WebP处理器日志文件内容
+docker-compose exec char-art-app sh -c "cat /app/webp-processor/data/webp-processor.log"
+
+# 使用Docker命令进入容器查看WebP处理器日志文件内容
+docker exec char-art-app sh -c "cat /app/webp-processor/data/char-art-converter.log"
+
+# 查看最近100行后端日志文件内容
+docker exec char-art-app sh -c "tail -n 100 /app/webp-processor/data/char-art-converter.log"
 ```
 
 ### 3. 停止和删除容器

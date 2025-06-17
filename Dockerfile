@@ -67,6 +67,7 @@ WORKDIR /app
 # 创建必要的目录
 RUN mkdir -p /app/backend/config \
     && mkdir -p /app/backend/data \
+    && mkdir -p /app/backend/logs \
     && mkdir -p /app/webp-processor/data \
     && mkdir -p /app/webp-processor/logs
 
@@ -94,12 +95,16 @@ RUN chmod +x /app/docker-start.sh
 ENV REDIS_DATABASE=0 \
     REDIS_TIMEOUT=60000 \
     CHAR_ART_CACHE_TTL=3600 \
-    WEBP_PROCESSOR_CONNECTION_TIMEOUT=5000 \
+    CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:" \
+    WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000 \
     WEBP_PROCESSOR_MAX_RETRIES=2 \
     MAX_FILE_SIZE=10MB \
     MAX_REQUEST_SIZE=10MB \
     LOG_LEVEL=INFO \
     BASE_PATH="" \
+    # 后端日志配置
+    LOG_FILE_MAX_SIZE=10MB \
+    LOG_FILE_MAX_HISTORY=30 \
     # Python WebP处理器配置
     DEBUG=False \
     MAX_CONTENT_LENGTH=16777216 \
@@ -107,6 +112,9 @@ ENV REDIS_DATABASE=0 \
 
 # 暴露端口
 EXPOSE 80
+
+# 定义卷
+VOLUME ["/data", "/app/backend/data", "/app/backend/logs", "/app/webp-processor/data", "/app/webp-processor/logs"]
 
 # 设置入口点
 ENTRYPOINT ["/app/docker-start.sh"]
