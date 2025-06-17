@@ -9,6 +9,7 @@ import com.doreamr233.charartconverter.service.ProgressService;
 import com.doreamr233.charartconverter.util.WebpProcessorClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +55,24 @@ public class CharArtController {
     private final WebpProcessorClient webpProcessorClient;
 
     /**
+     * WebP处理服务是否启用
+     */
+    @Value("${webp-processor.enabled}")
+    private boolean isWebpProcessorEnabled;
+
+    /**
+     * 默认字符密度，可选值为"low"、"medium"、"high"
+     */
+    @Value("${char-art.default-density}")
+    private final static String defaultDensity = "medium";
+
+    /**
+     * 默认颜色模式，可选值为"color"、"grayscale"
+     */
+    @Value("${char-art.default-color-mode}")
+    private final static String defaultColorMode = "grayscale";
+
+    /**
      * 将图片转换为字符画
      * <p>
      * 接收上传的图片文件，根据指定参数将其转换为字符画，并返回转换后的图片数据。
@@ -72,8 +91,8 @@ public class CharArtController {
     @PostMapping("/convert")
     public ResponseEntity<byte[]> convertImage(
             @RequestParam("image") MultipartFile imageFile,
-            @RequestParam(value = "density", defaultValue = "medium") String density,
-            @RequestParam(value = "colorMode", defaultValue = "grayscale") String colorMode,
+            @RequestParam(value = "density", defaultValue = defaultDensity) String density,
+            @RequestParam(value = "colorMode", defaultValue = defaultColorMode) String colorMode,
             @RequestParam(value = "limitSize", defaultValue = "true") boolean limitSize,
             @RequestParam(value = "progressId", required = false) String progressIdParam) {
         
@@ -125,7 +144,11 @@ public class CharArtController {
                 isAnimated = CharArtProcessor.isWebpAnimated(tempFile);
                 log.info("WebP图片是否为动图: {}", isAnimated);
             }
-            
+
+            if (isWebp && isAnimated && !isWebpProcessorEnabled) {
+                throw new ServiceException("Webp处理服务未开启，无法处理Webp格式动图");
+            }
+
             // 执行转换
             byte[] result;
             try {
@@ -320,20 +343,26 @@ public class CharArtController {
     @GetMapping("/health")
     public Map<String, String> health() {
         Map<String, String> response = new HashMap<>();
-        
-        // 检查Flask服务是否可用
-        boolean flaskServiceAvailable = webpProcessorClient.isServiceAvailable();
+        if(isWebpProcessorEnabled){
+            // 检查Flask服务是否可用
+            boolean flaskServiceAvailable = webpProcessorClient.isServiceAvailable();
 
-        if(flaskServiceAvailable){
-            response.put("status", "UP");
-            response.put("message", "字符画转换服务正常运行");
+            if(flaskServiceAvailable){
+                response.put("status", "UP");
+                response.put("webpProcessor", "UP");
+                response.put("message", "字符画转换服务正常运行，Webp处理服务正常运行");
+            }else{
+                response.put("status", "UP");
+                response.put("webpProcessor", "DOWN");
+                response.put("message", "字符画转换服务正常，Webp处理服务正常");
+            }
+            log.info("健康检查: 主服务状态=UP, Flask服务状态={}", flaskServiceAvailable ? "UP" : "DOWN");
         }else{
-            response.put("status", "DOWN");
-            response.put("message", "字符画转换服务正常异常");
+            response.put("status", "UP");
+            response.put("webpProcessor", "OFF");
+            response.put("message", "字符画转换服务正常运行，Webp处理服务未开启");
+            log.info("健康检查: 主服务状态=UP, Flask服务状态=OFF");
         }
-
-        log.info("健康检查: 主服务状态=UP, Flask服务状态={}", flaskServiceAvailable ? "UP" : "DOWN");
-        
         return response;
     }
 
