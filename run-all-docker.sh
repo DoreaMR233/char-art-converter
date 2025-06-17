@@ -21,37 +21,144 @@ echo
 
 # 显示选择菜单
 echo -e "${GREEN}请选择启动方式:${NC}"
-echo -e "${YELLOW}1. 使用一体化Dockerfile（推荐，单容器模式）${NC}"
+echo -e "${YELLOW}1. 使用Docker Run（单容器模式）${NC}"
 echo -e "${YELLOW}2. 使用Docker Compose（多容器模式）${NC}"
 echo
 
 read -p "请输入选择（1或2）: " CHOICE
 
 if [ "$CHOICE" = "1" ]; then
-    # 使用一体化Dockerfile
-    echo -e "${GREEN}[1/3] 使用一体化Dockerfile启动服务...${NC}"
+    USE_DOCKER_RUN=true
+else
+    USE_DOCKER_RUN=false
+fi
+
+if [ "$USE_DOCKER_RUN" = true ]; then
+    # 使用Docker Run
+    echo -e "${GREEN}[1/5] 使用Docker Run启动服务...${NC}"
+    
+    # 检查并创建Docker网络
+    echo -e "${GREEN}[2/5] 检查并创建Docker网络...${NC}"
+    if ! docker network ls | grep -q "char-art-network"; then
+        echo -e "${YELLOW}创建Docker网络: char-art-network${NC}"
+        docker network create char-art-network
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}错误: 创建Docker网络失败${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}Docker网络已存在: char-art-network${NC}"
+    fi
+
+    # 设置环境变量
+    echo -e "${GREEN}[3/5] 设置环境变量...${NC}"
+    
+    # 通用配置
+    read -p "请输入服务端口 (默认: 80): " SERVER_PORT
+    SERVER_PORT=${SERVER_PORT:-80}
+    
+    read -p "请输入上传文件大小限制 (默认: 10): " UPLOAD_FILE_SIZE_LIMIT
+    UPLOAD_FILE_SIZE_LIMIT=${UPLOAD_FILE_SIZE_LIMIT:-10}
+    
+    read -p "请输入临时文件保留时间(小时) (默认: 24): " TEMP_FILE_EXPIRATION_HOURS
+    TEMP_FILE_EXPIRATION_HOURS=${TEMP_FILE_EXPIRATION_HOURS:-24}
+    
+    # 后端服务配置
+    read -p "请输入后端服务端口 (默认: 8080): " BACKEND_PORT
+    BACKEND_PORT=${BACKEND_PORT:-8080}
+    
+    read -p "请输入后端服务日志级别 (默认: info): " BACKEND_LOG_LEVEL
+    BACKEND_LOG_LEVEL=${BACKEND_LOG_LEVEL:-info}
+    
+    read -p "请输入后端服务日志格式 (默认: text): " BACKEND_LOG_FORMAT
+    BACKEND_LOG_FORMAT=${BACKEND_LOG_FORMAT:-text}
+    
+    # Redis配置
+    read -p "请输入Redis主机地址 (默认: localhost): " REDIS_HOST
+    REDIS_HOST=${REDIS_HOST:-localhost}
+    
+    read -p "请输入Redis端口 (默认: 6379): " REDIS_PORT
+    REDIS_PORT=${REDIS_PORT:-6379}
+    
+    read -p "请输入Redis密码 (默认为空): " REDIS_PASSWORD
+    
+    read -p "请输入Redis数据库索引 (默认: 0): " REDIS_DB
+    REDIS_DB=${REDIS_DB:-0}
+    
+    # 字符画缓存配置
+    read -p "请输入字符画缓存过期时间(小时) (默认: 24): " CHAR_ART_CACHE_EXPIRATION_HOURS
+    CHAR_ART_CACHE_EXPIRATION_HOURS=${CHAR_ART_CACHE_EXPIRATION_HOURS:-24}
+    
+    # WebP处理器配置
+    read -p "请输入WebP处理器端口 (默认: 8081): " WEBP_PROCESSOR_PORT
+    WEBP_PROCESSOR_PORT=${WEBP_PROCESSOR_PORT:-8081}
+    
+    # Python WebP处理器配置
+    read -p "请输入Python WebP处理器端口 (默认: 8082): " PYTHON_WEBP_PROCESSOR_PORT
+    PYTHON_WEBP_PROCESSOR_PORT=${PYTHON_WEBP_PROCESSOR_PORT:-8082}
+    
+    # 字符画默认配置
+    read -p "请输入默认字符集 (默认: standard): " DEFAULT_CHARSET
+    DEFAULT_CHARSET=${DEFAULT_CHARSET:-standard}
+    
+    read -p "请输入默认字符画宽度 (默认: 80): " DEFAULT_WIDTH
+    DEFAULT_WIDTH=${DEFAULT_WIDTH:-80}
+    
+    read -p "请输入默认字符画高度 (默认: 40): " DEFAULT_HEIGHT
+    DEFAULT_HEIGHT=${DEFAULT_HEIGHT:-40}
+    
+    read -p "请输入默认反色模式 (默认: false): " DEFAULT_NEGATIVE
+    DEFAULT_NEGATIVE=${DEFAULT_NEGATIVE:-false}
+    
+    # 前端配置
+    read -p "请输入前端服务端口 (默认: 3000): " FRONTEND_PORT
+    FRONTEND_PORT=${FRONTEND_PORT:-3000}
     
     # 检查镜像是否存在
-    if ! docker images char-art-converter:latest | grep -q char-art-converter; then
-        echo -e "${YELLOW}镜像不存在，正在构建...${NC}"
-        docker build -t char-art-converter:latest .
-        
+    echo -e "${GREEN}[4/5] 检查并构建镜像...${NC}"
+    if ! docker images | grep -q "char-art-app"; then
+        echo -e "${YELLOW}构建镜像...${NC}"
+        docker build -t char-art-app .
         if [ $? -ne 0 ]; then
             echo -e "${RED}错误: 构建镜像失败${NC}"
             exit 1
         fi
+    else
+        echo -e "${YELLOW}镜像已存在，跳过构建${NC}"
     fi
-    
-    # 检查容器是否已存在
-    if docker ps -a --format "{{.Names}}" | grep -q "char-art-app"; then
-        echo -e "${YELLOW}容器已存在，正在停止并移除...${NC}"
+
+    # 检查容器是否存在并运行
+    if docker ps -a | grep -q "char-art-app"; then
+        echo -e "${YELLOW}容器已存在，正在停止并删除...${NC}"
         docker stop char-art-app > /dev/null 2>&1
         docker rm char-art-app > /dev/null 2>&1
     fi
-    
-    # 启动容器
-    docker run -d --name char-art-app -p 80:80 char-art-converter:latest
-    
+
+    echo -e "${GREEN}[5/5] 启动容器...${NC}"
+    docker run -d --name char-art-app \
+        --network char-art-network \
+        -p ${SERVER_PORT}:80 \
+        -e SERVER_PORT=${SERVER_PORT} \
+        -e UPLOAD_FILE_SIZE_LIMIT=${UPLOAD_FILE_SIZE_LIMIT} \
+        -e TEMP_FILE_EXPIRATION_HOURS=${TEMP_FILE_EXPIRATION_HOURS} \
+        -e BACKEND_PORT=${BACKEND_PORT} \
+        -e BACKEND_LOG_LEVEL=${BACKEND_LOG_LEVEL} \
+        -e BACKEND_LOG_FORMAT=${BACKEND_LOG_FORMAT} \
+        -e REDIS_HOST=${REDIS_HOST} \
+        -e REDIS_PORT=${REDIS_PORT} \
+        -e REDIS_PASSWORD=${REDIS_PASSWORD} \
+        -e REDIS_DB=${REDIS_DB} \
+        -e CHAR_ART_CACHE_EXPIRATION_HOURS=${CHAR_ART_CACHE_EXPIRATION_HOURS} \
+        -e WEBP_PROCESSOR_PORT=${WEBP_PROCESSOR_PORT} \
+        -e PYTHON_WEBP_PROCESSOR_PORT=${PYTHON_WEBP_PROCESSOR_PORT} \
+        -e DEFAULT_CHARSET=${DEFAULT_CHARSET} \
+        -e DEFAULT_WIDTH=${DEFAULT_WIDTH} \
+        -e DEFAULT_HEIGHT=${DEFAULT_HEIGHT} \
+        -e DEFAULT_NEGATIVE=${DEFAULT_NEGATIVE} \
+        -e FRONTEND_PORT=${FRONTEND_PORT} \
+        -v "$(pwd)/data:/app/data" \
+        char-art-app
+
     if [ $? -ne 0 ]; then
         echo -e "${RED}错误: 启动容器失败${NC}"
         exit 1
@@ -59,13 +166,15 @@ if [ "$CHOICE" = "1" ]; then
     
 else
     # 使用Docker Compose
+    echo -e "${GREEN}[1/3] 使用Docker Compose启动服务...${NC}"
+    
     # 检查Docker Compose是否安装
     if ! command -v docker-compose &> /dev/null; then
         echo -e "${RED}错误: Docker Compose未安装。请先安装Docker Compose: https://docs.docker.com/compose/install/${NC}"
         exit 1
     fi
     
-    echo -e "${GREEN}[1/3] 使用Docker Compose启动服务...${NC}"
+    # 启动服务
     docker-compose up -d
     
     if [ $? -ne 0 ]; then
@@ -81,8 +190,8 @@ sleep 5
 # 检查服务健康状态
 echo -e "${GREEN}[3/3] 检查服务健康状态...${NC}"
 
-if [ "$CHOICE" = "1" ]; then
-    # 一体化Dockerfile模式下的健康检查
+if [ "$USE_DOCKER_RUN" = true ]; then
+    # Docker Run模式下的健康检查
     BACKEND_URL="http://localhost/api/health"
     
     echo -e "${YELLOW}检查服务健康状态...${NC}"
@@ -90,18 +199,18 @@ if [ "$CHOICE" = "1" ]; then
     RETRIES=0
     
     while [ $RETRIES -lt $MAX_RETRIES ]; do
-        if curl -s $BACKEND_URL > /dev/null; then
+        if curl -s -f "$BACKEND_URL" > /dev/null; then
             echo -e "${GREEN}服务已成功启动!${NC}"
             break
         fi
         
         RETRIES=$((RETRIES+1))
-        if [ $RETRIES -ge $MAX_RETRIES ]; then
+        echo -e "${YELLOW}服务正在启动中，请稍候... ($RETRIES/$MAX_RETRIES)${NC}"
+        sleep 2
+        
+        if [ $RETRIES -eq $MAX_RETRIES ]; then
             echo -e "${RED}警告: 服务可能未正常启动，请检查日志:${NC}"
             echo -e "${GREEN}docker logs char-art-app${NC}"
-        else
-            echo -e "${YELLOW}服务正在启动中，请稍候... ($RETRIES/$MAX_RETRIES)${NC}"
-            sleep 2
         fi
     done
     
@@ -118,61 +227,14 @@ if [ "$CHOICE" = "1" ]; then
     echo -e "${YELLOW}更多配置选项请参考Docker.md文档${NC}"
 else
     # Docker Compose模式下的健康检查
-    # 检查后端服务
-    echo -e "${YELLOW}检查后端服务...${NC}"
-    MAX_RETRIES=10
-    RETRIES=0
-    BACKEND_URL="http://localhost:8080/api/health"
-    
-    while [ $RETRIES -lt $MAX_RETRIES ]; do
-        if curl -s $BACKEND_URL > /dev/null; then
-            echo -e "${GREEN}后端服务已成功启动!${NC}"
-            break
-        fi
-        
-        RETRIES=$((RETRIES+1))
-        if [ $RETRIES -ge $MAX_RETRIES ]; then
-            echo -e "${RED}警告: 后端服务可能未正常启动，请检查日志:${NC}"
-            echo -e "${GREEN}docker logs char-art-backend${NC}"
-        else
-            echo -e "${YELLOW}后端服务正在启动中，请稍候... ($RETRIES/$MAX_RETRIES)${NC}"
-            sleep 2
-        fi
-    done
-    
-    # 检查WebP处理服务
-    echo -e "${YELLOW}检查WebP处理服务...${NC}"
-    MAX_RETRIES=10
-    RETRIES=0
-    WEBP_URL="http://localhost:8081/api/health"
-    
-    while [ $RETRIES -lt $MAX_RETRIES ]; do
-        if curl -s $WEBP_URL | grep -q "ok"; then
-            echo -e "${GREEN}WebP处理服务已成功启动!${NC}"
-            break
-        fi
-        
-        RETRIES=$((RETRIES+1))
-        if [ $RETRIES -ge $MAX_RETRIES ]; then
-            echo -e "${RED}警告: WebP处理服务可能未正常启动，请检查日志:${NC}"
-            echo -e "${GREEN}docker logs webp-processor${NC}"
-        else
-            echo -e "${YELLOW}WebP处理服务正在启动中，请稍候... ($RETRIES/$MAX_RETRIES)${NC}"
-            sleep 2
-        fi
-    done
-    
-    echo
-    echo -e "${GREEN}服务地址:${NC}"
-    echo -e "${GREEN}后端服务: http://localhost:8080${NC}"
-    echo -e "${GREEN}WebP处理服务: http://localhost:8081${NC}"
+    echo -e "${GREEN}服务已启动，请使用以下命令查看服务状态:${NC}"
+    echo -e "${GREEN}docker-compose ps${NC}"
     echo
     echo -e "${YELLOW}常用命令:${NC}"
-    echo -e "  查看所有容器: ${GREEN}docker ps${NC}"
-    echo -e "  查看后端日志: ${GREEN}docker logs char-art-backend${NC}"
-    echo -e "  查看WebP处理服务日志: ${GREEN}docker logs webp-processor${NC}"
-    echo -e "  停止所有服务: ${GREEN}docker-compose down${NC}"
-    echo -e "  重启所有服务: ${GREEN}docker-compose restart${NC}"
+    echo -e "  查看服务状态: ${GREEN}docker-compose ps${NC}"
+    echo -e "  查看服务日志: ${GREEN}docker-compose logs${NC}"
+    echo -e "  停止服务: ${GREEN}docker-compose down${NC}"
+    echo -e "  重启服务: ${GREEN}docker-compose restart${NC}"
     echo
     echo -e "${YELLOW}更多配置选项请参考Docker.md文档${NC}"
 fi

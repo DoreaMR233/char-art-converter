@@ -24,76 +24,180 @@ echo.
 
 REM 显示选择菜单
 echo %GREEN%请选择启动方式:%NC%
-echo %YELLOW%1. 使用一体化Dockerfile（推荐，单容器模式）%NC%
+echo %YELLOW%1. 使用Docker Run（单容器模式）%NC%
 echo %YELLOW%2. 使用Docker Compose（多容器模式）%NC%
 echo.
 
 set /p CHOICE=请输入选择（1或2）: 
 
 if "%CHOICE%"=="1" (
-    goto :USE_DOCKERFILE
+    set USE_DOCKER_RUN=true
 ) else if "%CHOICE%"=="2" (
-    goto :USE_DOCKER_COMPOSE
+    set USE_DOCKER_RUN=false
 ) else (
     echo %RED%错误: 无效的选择，请输入1或2%NC%
 	pause
     exit /b 1
 )
 
-:USE_DOCKERFILE
-echo %GREEN%[1/3] 使用一体化Dockerfile启动服务...%NC%
+if "%USE_DOCKER_RUN%"=="true" (
+    echo %GREEN%[1/5] 使用Docker Run启动服务...%NC%
 
-REM 检查镜像是否存在
-docker images char-art-converter:latest --format "{{.Repository}}" | findstr /i "char-art-converter" > nul
-if %ERRORLEVEL% neq 0 (
-    echo %YELLOW%镜像不存在，正在构建...%NC%
-    docker build -t char-art-converter:latest .
-    
+    REM 检查镜像是否存在
+    docker images char-art-converter:latest --format "{{.Repository}}" | findstr /i "char-art-converter" > nul
     if %ERRORLEVEL% neq 0 (
-        echo %RED%错误: 构建镜像失败%NC%
-		pause
+        echo %YELLOW%镜像不存在，正在构建...%NC%
+        docker build -t char-art-converter:latest .
+        
+        if %ERRORLEVEL% neq 0 (
+            echo %RED%错误: 构建镜像失败%NC%
+		    pause
+            exit /b 1
+        )
+    )
+
+    REM 检查容器是否已存在
+    echo %GREEN%[2/5] 检查并停止已存在的容器...%NC%
+    docker ps -a --format "{{.Names}}" | findstr /i "char-art-app" > nul
+    if %ERRORLEVEL% equ 0 (
+        echo %YELLOW%容器已存在，正在停止并移除...%NC%
+        docker stop char-art-app > nul 2>&1
+        docker rm char-art-app > nul 2>&1
+    )
+
+    REM 检查网络是否存在，如果不存在则创建
+    echo %GREEN%[3/5] 检查Docker网络...%NC%
+    docker network ls | findstr "char-art-network" > nul
+    if %ERRORLEVEL% neq 0 (
+        echo %YELLOW%创建Docker网络: char-art-network%NC%
+        docker network create char-art-network
+        
+        if %ERRORLEVEL% neq 0 (
+            echo %RED%错误: 创建网络失败%NC%
+            pause
+            exit /b 1
+        )
+    )
+
+    REM 设置环境变量
+    echo %GREEN%[4/5] 配置环境变量...%NC%
+    echo %YELLOW%请为每个环境变量输入值，或直接按回车使用默认值%NC%
+    echo.
+
+    REM 通用配置
+    set /p LOG_LEVEL=日志级别 (默认: INFO): 
+    if ""%LOG_LEVEL%""==""" set LOG_LEVEL=INFO
+
+    REM 后端服务配置
+    set /p MAX_FILE_SIZE=最大文件大小 (默认: 10MB): 
+    if ""%MAX_FILE_SIZE%""==""" set MAX_FILE_SIZE=10MB
+
+    set /p MAX_REQUEST_SIZE=最大请求大小 (默认: 10MB): 
+    if ""%MAX_REQUEST_SIZE%""==""" set MAX_REQUEST_SIZE=10MB
+
+    REM 后端日志配置
+    set /p LOG_FILE_MAX_SIZE=日志文件最大大小 (默认: 10MB): 
+    if ""%LOG_FILE_MAX_SIZE%""==""" set LOG_FILE_MAX_SIZE=10MB
+
+    set /p LOG_FILE_MAX_HISTORY=日志文件保留历史数量 (默认: 30): 
+    if ""%LOG_FILE_MAX_HISTORY%""==""" set LOG_FILE_MAX_HISTORY=30
+
+    REM Redis配置
+    set /p REDIS_DATABASE=Redis数据库索引 (默认: 0): 
+    if ""%REDIS_DATABASE%""==""" set REDIS_DATABASE=0
+
+    set /p REDIS_TIMEOUT=Redis超时时间，单位毫秒 (默认: 60000): 
+    if ""%REDIS_TIMEOUT%""==""" set REDIS_TIMEOUT=60000
+
+    REM 字符画缓存配置
+    set /p CHAR_ART_CACHE_TTL=缓存过期时间，单位秒 (默认: 3600): 
+    if ""%CHAR_ART_CACHE_TTL%""==""" set CHAR_ART_CACHE_TTL=3600
+
+    set /p CHAR_ART_CACHE_DEFAULT_KEY_PREFIX=缓存键前缀 (默认: char-art:text:): 
+    if ""%CHAR_ART_CACHE_DEFAULT_KEY_PREFIX%""==""" set CHAR_ART_CACHE_DEFAULT_KEY_PREFIX=char-art:text:
+
+    REM WebP处理器配置
+    set /p WEBP_PROCESSOR_CONNECTION_TIMEOUT=WebP处理器连接超时时间，单位毫秒 (默认: 5000): 
+    if ""%WEBP_PROCESSOR_CONNECTION_TIMEOUT%""==""" set WEBP_PROCESSOR_CONNECTION_TIMEOUT=5000
+
+    set /p WEBP_PROCESSOR_MAX_RETRIES=WebP处理器最大重试次数 (默认: 2): 
+    if ""%WEBP_PROCESSOR_MAX_RETRIES%""==""" set WEBP_PROCESSOR_MAX_RETRIES=2
+
+    REM Python WebP处理器配置
+    set /p DEBUG=是否开启调试模式 (默认: False): 
+    if ""%DEBUG%""==""" set DEBUG=False
+
+    set /p MAX_CONTENT_LENGTH=最大内容长度，单位字节 (默认: 16777216): 
+    if ""%MAX_CONTENT_LENGTH%""==""" set MAX_CONTENT_LENGTH=16777216
+
+    set /p TEMP_FILE_TTL=临时文件存活时间，单位秒 (默认: 3600): 
+    if ""%TEMP_FILE_TTL%""==""" set TEMP_FILE_TTL=3600
+
+    REM 字符画默认配置
+    set /p DEFAULT_DENSITY=默认字符密度 (默认: medium): 
+    if ""%DEFAULT_DENSITY%""==""" set DEFAULT_DENSITY=medium
+
+    set /p DEFAULT_COLOR_MODE=默认颜色模式 (默认: grayscale): 
+    if ""%DEFAULT_COLOR_MODE%""==""" set DEFAULT_COLOR_MODE=grayscale
+
+    REM 前端配置
+    set /p BASE_PATH=前端资源路径前缀 (默认为空): 
+    if ""%BASE_PATH%""==""" set BASE_PATH=
+
+    REM 启动容器
+    echo %GREEN%[5/5] 启动字符画转换器容器...%NC%
+    docker run -d --name char-art-app ^  
+        -p 80:80 ^  
+        -v char-art-data:/app/backend/data ^  
+        -v char-art-logs:/app/backend/logs ^  
+        -v redis-data:/app/redis/data ^  
+        -v webp-processor-data:/app/webp-processor/data ^  
+        -v webp-processor-logs:/app/webp-processor/logs ^  
+        --network char-art-network ^  
+        -e LOG_LEVEL=%LOG_LEVEL% ^  
+        -e MAX_FILE_SIZE=%MAX_FILE_SIZE% ^  
+        -e MAX_REQUEST_SIZE=%MAX_REQUEST_SIZE% ^  
+        -e LOG_FILE_MAX_SIZE=%LOG_FILE_MAX_SIZE% ^  
+        -e LOG_FILE_MAX_HISTORY=%LOG_FILE_MAX_HISTORY% ^  
+        -e REDIS_DATABASE=%REDIS_DATABASE% ^  
+        -e REDIS_TIMEOUT=%REDIS_TIMEOUT% ^  
+        -e CHAR_ART_CACHE_TTL=%CHAR_ART_CACHE_TTL% ^  
+        -e CHAR_ART_CACHE_DEFAULT_KEY_PREFIX=%CHAR_ART_CACHE_DEFAULT_KEY_PREFIX% ^  
+        -e WEBP_PROCESSOR_CONNECTION_TIMEOUT=%WEBP_PROCESSOR_CONNECTION_TIMEOUT% ^  
+        -e WEBP_PROCESSOR_MAX_RETRIES=%WEBP_PROCESSOR_MAX_RETRIES% ^  
+        -e DEBUG=%DEBUG% ^  
+        -e MAX_CONTENT_LENGTH=%MAX_CONTENT_LENGTH% ^  
+        -e TEMP_FILE_TTL=%TEMP_FILE_TTL% ^  
+        -e DEFAULT_DENSITY=%DEFAULT_DENSITY% ^  
+        -e DEFAULT_COLOR_MODE=%DEFAULT_COLOR_MODE% ^  
+        -e BASE_PATH=%BASE_PATH% ^  
+        char-art-converter:latest
+
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 启动容器失败%NC%
+	    pause
+        exit /b 1
+    )
+) else (
+
+    REM 检查Docker Compose是否安装
+    docker-compose --version > nul 2>&1
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: Docker Compose未安装。请先安装Docker Compose: https://docs.docker.com/compose/install/%NC%
+	    pause
+        exit /b 1
+    )
+
+    echo %GREEN%[1/3] 使用Docker Compose启动服务...%NC%
+    docker-compose up -d
+
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 启动服务失败%NC%
+	    pause
         exit /b 1
     )
 )
 
-REM 检查容器是否已存在
-docker ps -a --format "{{.Names}}" | findstr /i "char-art-app" > nul
-if %ERRORLEVEL% equ 0 (
-    echo %YELLOW%容器已存在，正在停止并移除...%NC%
-    docker stop char-art-app > nul 2>&1
-    docker rm char-art-app > nul 2>&1
-)
-
-REM 启动容器
-docker run -d --name char-art-app -p 80:80 char-art-converter:latest
-
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: 启动容器失败%NC%
-	pause
-    exit /b 1
-)
-
-goto :WAIT_FOR_SERVICES
-
-:USE_DOCKER_COMPOSE
-REM 检查Docker Compose是否安装
-docker-compose --version > nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: Docker Compose未安装。请先安装Docker Compose: https://docs.docker.com/compose/install/%NC%
-	pause
-    exit /b 1
-)
-
-echo %GREEN%[1/3] 使用Docker Compose启动服务...%NC%
-docker-compose up -d
-
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: 启动服务失败%NC%
-	pause
-    exit /b 1
-)
-
-:WAIT_FOR_SERVICES
 REM 等待服务启动
 echo %GREEN%[2/3] 等待服务启动...%NC%
 timeout /t 5 /nobreak > nul
@@ -101,8 +205,8 @@ timeout /t 5 /nobreak > nul
 REM 检查服务健康状态
 echo %GREEN%[3/3] 检查服务健康状态...%NC%
 
-if "%CHOICE%"=="1" (
-    REM 一体化Dockerfile模式下的健康检查
+if "%USE_DOCKER_RUN%"=="true" (
+    REM Docker Run模式下的健康检查
     set BACKEND_URL=http://localhost/api/health
     
     echo %YELLOW%检查服务健康状态...%NC%

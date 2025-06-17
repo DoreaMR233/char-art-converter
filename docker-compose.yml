@@ -87,13 +87,14 @@ services:
   # 字符画转换器前端服务
   char-art-frontend:
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: char-art-frontend
     ports:
       - "8080:80"
     environment:
       - BASE_PATH=/char-art/
+      - API_URL=http://char-art-backend:8080
     restart: unless-stopped
     networks:
       - char-art-network
