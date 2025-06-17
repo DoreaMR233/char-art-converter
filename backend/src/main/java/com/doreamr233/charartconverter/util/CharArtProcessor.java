@@ -66,7 +66,7 @@ public class CharArtProcessor {
      */
     public static boolean isWebpAnimated(Path webpFile) {
         try (InputStream is = Files.newInputStream(webpFile)) {
-            byte[] buffer = new byte[20]; // 读取前20个字节，足够检查文件头
+            byte[] buffer = new byte[100]; // 读取前100个字节，足够检查文件头
             if (is.read(buffer) > 0) {
                 String header = new String(buffer);
                 return header.contains("ANIM"); // 检查是否包含ANIM标记
