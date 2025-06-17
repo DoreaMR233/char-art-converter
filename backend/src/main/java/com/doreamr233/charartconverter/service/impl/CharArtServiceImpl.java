@@ -63,7 +63,7 @@ public class CharArtServiceImpl implements CharArtService {
      * @param imageStream 图片输入流，包含要转换的图像数据
      * @param filename 文件名，用于判断图像类型和缓存结果
      * @param density 字符密度，可选值为"low"、"medium"、"high"
-     * @param colorMode 颜色模式，可选值为"color"、"gray"
+     * @param colorMode 颜色模式，可选值为"color"、"grayscale"
      * @param progressId 进度ID，用于跟踪和报告转换进度
      * @param limitSize 是否限制字符画的最大尺寸
      * @return 转换后的字符画图片字节数组
