@@ -1,0 +1,23 @@
+{
+  "name": "char-art-converter-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:custom": "cross-env BASE_PATH=$npm_config_base vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.4.0",
+    "element-plus": "^2.3.8",
+    "vue": "^3.3.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.2.3",
+    "cross-env": "^7.0.3",
+    "vite": "^4.4.0"
+  }
+}

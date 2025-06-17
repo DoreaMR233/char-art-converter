@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # WebP处理服务
+  webp-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webp-processor
+    ports:
+      - "8081:5000"
+    environment:
+      # 服务配置
+      - PORT=5000
+      - LOG_LEVEL=INFO
+      - DEBUG=False
+      - MAX_CONTENT_LENGTH=16777216
+      - TEMP_FILE_TTL=3600
+    volumes:
+      - webp-processor-data:/app/data
+      - webp-processor-logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - char-art-network
+
+networks:
+  char-art-network:
+    driver: bridge
+    # 如果需要与后端服务共用网络，请取消下面的注释并确保网络名称一致
+    # external: true
+    # name: char-art-network
+
+volumes:
+  webp-processor-data:
+  webp-processor-logs:

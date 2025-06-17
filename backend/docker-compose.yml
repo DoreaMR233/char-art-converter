@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # 字符画转换器后端服务
+  char-art-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: char-art-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # Redis配置
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      - REDIS_TIMEOUT=60000
+      # 字符画缓存配置
+      - CHAR_ART_CACHE_TTL=3600
+      # WebP处理服务配置
+      - WEBP_PROCESSOR_URL=http://webp-processor:8081
+      - WEBP_PROCESSOR_ENABLED=true
+      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=5000
+      - WEBP_PROCESSOR_MAX_RETRIES=2
+      # 服务器配置
+      - SERVER_PORT=8080
+      # 上传文件配置
+      - MAX_FILE_SIZE=10MB
+      - MAX_REQUEST_SIZE=10MB
+      # 日志配置
+      - LOG_LEVEL=INFO
+      # 字符画默认配置
+      - DEFAULT_DENSITY=medium
+      - DEFAULT_COLOR_MODE=grayscale
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - char-art-network
+    volumes:
+      - char-art-data:/app/data
+
+  # Redis服务
+  redis:
+    image: redis:6.2-alpine
+    container_name: char-art-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - char-art-network
+
+  # WebP处理服务（可选，如果有外部WebP处理服务，可以注释掉此部分）
+  webp-processor:
+    image: ../python_webp_processor
+    container_name: webp-processor
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    networks:
+      - char-art-network
+
+networks:
+  char-art-network:
+    driver: bridge
+
+volumes:
+  char-art-data:
+  redis-data:

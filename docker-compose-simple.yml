@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # 字符画转换器一体化服务
+  char-art-converter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: char-art-converter
+    ports:
+      - "80:80"      # 前端服务
+    environment:
+      # Redis配置
+      - REDIS_DATABASE=0
+      - REDIS_TIMEOUT=60000
+      # 字符画缓存配置
+      - CHAR_ART_CACHE_TTL=3600
+      # WebP处理服务配置
+      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=5000
+      - WEBP_PROCESSOR_MAX_RETRIES=2
+      # 上传文件配置
+      - MAX_FILE_SIZE=10MB
+      - MAX_REQUEST_SIZE=10MB
+      # 日志配置
+      - LOG_LEVEL=INFO
+      # Python WebP处理器配置
+      - DEBUG=False
+      - MAX_CONTENT_LENGTH=16777216
+      - TEMP_FILE_TTL=3600
+      # 前端路径配置（可选，设置子路径部署）
+      - BASE_PATH=
+    volumes:
+      - char-art-data:/app/backend/data
+      - webp-processor-data:/app/webp-processor/data
+      - webp-processor-logs:/app/webp-processor/logs
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  char-art-data:
+  webp-processor-data:
+  webp-processor-logs:
+  redis-data:

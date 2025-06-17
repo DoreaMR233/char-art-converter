@@ -1,0 +1,114 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/**
+ * 全局样式 - 基础元素样式设置
+ */
+
+/**
+ * 页面主体样式
+ * 设置基本字体、颜色和背景
+ */
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #2c3e50;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/**
+ * 标题样式
+ * 页面主标题的样式设置
+ */
+.title {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 2rem;
+  color: #409eff;
+}
+
+/**
+ * 图像容器布局
+ * 用于并排显示原始图像和转换后的图像
+ */
+.image-container {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  gap: 20px;
+}
+
+/**
+ * 图像框样式
+ * 单个图像显示区域的样式
+ */
+.image-box {
+  flex: 1;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+/**
+ * 图像框标题样式
+ * 图像框顶部的标题栏样式
+ */
+.image-box-title {
+  background-color: #f2f6fc;
+  padding: 10px;
+  text-align: center;
+  font-weight: 500;
+  border-bottom: 1px solid #dcdfe6;
+}
+
+/**
+ * 图像内容区域样式
+ * 图像实际显示的容器样式，包含滚动和居中功能
+ */
+.image-content {
+  overflow: auto;
+  max-height: 500px;
+  min-height: 300px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+}
+
+/**
+ * 按钮组样式
+ * 操作按钮的布局容器
+ */
+.button-group {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+  gap: 10px;
+}
+
+/**
+ * 选项组样式
+ * 转换选项的布局容器
+ */
+.options-group {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+  gap: 20px;
+}

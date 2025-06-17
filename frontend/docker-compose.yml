@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  char-art-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: char-art-frontend
+    ports:
+      - "8080:80"
+    environment:
+      - BASE_PATH=/char-art/
+    restart: unless-stopped
+    networks:
+      - char-art-network
+
+networks:
+  char-art-network:
+    driver: bridge
