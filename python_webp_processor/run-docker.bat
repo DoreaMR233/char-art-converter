@@ -28,82 +28,197 @@ set CONTAINER_NAME=webp-processor
 set HOST_PORT=8081
 set CONTAINER_PORT=5000
 
-REM 构建Docker镜像
-echo %GREEN%[1/4] 构建Docker镜像...%NC%
-docker build -t %IMAGE_NAME% .
+REM 显示选择菜单
+echo %GREEN%请选择启动方式:%NC%
+echo %YELLOW%1. 使用Docker Run（单容器模式）%NC%
+echo %YELLOW%2. 使用Docker Compose（多容器模式）%NC%
+echo.
 
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: 构建Docker镜像失败%NC%
+set /p CHOICE=请输入选择（1或2）: 
+
+if "%CHOICE%"=="1" (
+    set USE_DOCKER_RUN=true
+) else if "%CHOICE%"=="2" (
+    set USE_DOCKER_RUN=false
+) else (
+    echo %RED%错误: 无效的选择，请输入1或2%NC%
 	pause
     exit /b 1
 )
 
-echo %GREEN%[2/4] 检查并停止已存在的容器...%NC%
-REM 检查容器是否已存在，如果存在则停止并删除
-docker ps -a | findstr %CONTAINER_NAME% > nul
-if %ERRORLEVEL% equ 0 (
-    echo %YELLOW%发现已存在的容器，正在停止并删除...%NC%
-    docker stop %CONTAINER_NAME% > nul 2>&1
-    docker rm %CONTAINER_NAME% > nul 2>&1
-)
+if "%USE_DOCKER_RUN%"=="true" (
+    REM 构建Docker镜像
+    echo %GREEN%[1/5] 构建Docker镜像...%NC%
+    docker build -t %IMAGE_NAME%:latest .
 
-REM 启动容器
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 构建Docker镜像失败%NC%
+        pause
+        exit /b 1
+    )
 
-echo %GREEN%[3/4] 启动WebP处理服务容器...%NC%
+    echo %GREEN%[2/5] 检查并停止已存在的容器...%NC%
+    REM 检查容器是否已存在，如果存在则停止并删除
+    docker ps -a | findstr "%CONTAINER_NAME%" > nul
+    if %ERRORLEVEL% equ 0 (
+        echo %YELLOW%发现已存在的%CONTAINER_NAME%容器，正在停止并删除...%NC%
+        docker stop %CONTAINER_NAME% > nul 2>&1
+        docker rm %CONTAINER_NAME% > nul 2>&1
+    )
 
-docker run -d ^
-    --name %CONTAINER_NAME% ^
-    -p %HOST_PORT%:%CONTAINER_PORT% ^
-    -v webp-processor-data:/app/data ^
-    -v webp-processor-logs:/app/logs ^
-    %IMAGE_NAME%
+    REM 检查网络是否存在，如果不存在则创建
+    echo %GREEN%[3/5] 检查Docker网络...%NC%
+    docker network ls | findstr "char-art-network" > nul
+    if %ERRORLEVEL% neq 0 (
+        echo %YELLOW%创建Docker网络: char-art-network%NC%
+        docker network create char-art-network
+        
+        if %ERRORLEVEL% neq 0 (
+            echo %RED%错误: 创建网络失败%NC%
+            pause
+            exit /b 1
+        )
+    )
 
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: 启动容器失败%NC%
-	pause
-    exit /b 1
+    REM 设置环境变量
+    echo %GREEN%[4/5] 配置环境变量...%NC%
+    echo %YELLOW%请为每个环境变量输入值，或直接按回车使用默认值%NC%
+    echo.
+
+    set /p PORT=服务监听端口 (默认: 5000): 
+    if ""%PORT%""==""" set PORT=5000
+
+    set /p LOG_LEVEL=日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL) (默认: INFO): 
+    if ""%LOG_LEVEL%""==""" set LOG_LEVEL=INFO
+
+    set /p DEBUG=调试模式 (默认: False): 
+    if ""%DEBUG%""==""" set DEBUG=False
+
+    set /p MAX_CONTENT_LENGTH=最大上传文件大小（字节） (默认: 16777216): 
+    if ""%MAX_CONTENT_LENGTH%""==""" set MAX_CONTENT_LENGTH=16777216
+
+    set /p TEMP_FILE_TTL=临时文件保留时间（秒） (默认: 3600): 
+    if ""%TEMP_FILE_TTL%""==""" set TEMP_FILE_TTL=3600
+
+    REM 启动容器
+    echo %GREEN%[5/5] 启动WebP处理服务容器...%NC%
+    docker run -d ^
+        --name %CONTAINER_NAME% ^
+        -p %HOST_PORT%:%CONTAINER_PORT% ^
+        -v webp-processor-data:/app/data ^
+        -v webp-processor-logs:/app/logs ^
+        --network char-art-network ^
+        -e PORT=%PORT% ^
+        -e LOG_LEVEL=%LOG_LEVEL% ^
+        -e DEBUG=%DEBUG% ^
+        -e MAX_CONTENT_LENGTH=%MAX_CONTENT_LENGTH% ^
+        -e TEMP_FILE_TTL=%TEMP_FILE_TTL% ^
+        %IMAGE_NAME%:latest
+
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 启动容器失败%NC%
+        pause
+        exit /b 1
+    )
+) else (
+    REM 检查Docker Compose是否安装
+    docker-compose --version > nul 2>&1
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: Docker Compose未安装。请先安装Docker Compose: https://docs.docker.com/compose/install/%NC%
+        pause
+        exit /b 1
+    )
+
+    echo %GREEN%[1/2] 使用Docker Compose启动服务...%NC%
+    docker-compose up -d
+
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 启动服务失败%NC%
+        pause
+        exit /b 1
+    )
 )
 
 REM 等待服务启动
-echo %GREEN%[4/4] 等待服务启动...%NC%
+echo %GREEN%[*] 等待服务启动...%NC%
 timeout /t 3 /nobreak > nul
 
 REM 检查服务健康状态
 echo %YELLOW%检查服务健康状态...%NC%
 set MAX_RETRIES=10
 set RETRIES=0
-set HEALTH_CHECK_URL=http://localhost:%HOST_PORT%/api/health
 
-:HEALTH_CHECK_LOOP
-if %RETRIES% geq %MAX_RETRIES% goto :HEALTH_CHECK_FAILED
-
-REM 使用PowerShell进行HTTP请求
-powershell -Command "try { $response = Invoke-WebRequest -Uri '%HEALTH_CHECK_URL%' -UseBasicParsing; if ($response.Content -match 'ok') { exit 0 } else { exit 1 } } catch { exit 1 }" > nul 2>&1
-
-if %ERRORLEVEL% equ 0 (
+if "%USE_DOCKER_RUN%"=="true" (
+    set HEALTH_CHECK_URL=http://localhost:%HOST_PORT%/api/health
     
-    echo %GREEN%服务已成功启动!... %NC%
-    echo %GREEN%WebP处理服务地址: http://localhost:%HOST_PORT% %NC%
-    echo.
-    echo %YELLOW%常用命令:%NC%
-    echo   %GREEN%查看日志: docker logs %CONTAINER_NAME% %NC%
-    echo   %GREEN%停止服务: docker stop %CONTAINER_NAME% %NC%
-    echo   %GREEN%启动服务: docker start %CONTAINER_NAME% %NC%
-    echo   %GREEN%删除容器: docker rm %CONTAINER_NAME% %NC%
-    echo.
-    echo %YELLOW% 更多配置选项请参考 README.Docker.md 文档 %NC%
+    :HEALTH_CHECK_LOOP_SINGLE
+    if %RETRIES% geq %MAX_RETRIES% goto :HEALTH_CHECK_FAILED_SINGLE
+    
+    REM 使用PowerShell执行健康检查
+    powershell -Command "try { $response = Invoke-WebRequest -Uri '%HEALTH_CHECK_URL%' -UseBasicParsing -ErrorAction Stop; if ($response.Content -match 'ok') { exit 0 } else { exit 1 } } catch { exit 1 }" > nul 2>&1
+    
+    if %ERRORLEVEL% equ 0 (
+        echo %GREEN%服务已成功启动!%NC%
+        echo %GREEN%WebP处理服务地址: http://localhost:%HOST_PORT%%NC%
+        echo %GREEN%健康检查: %HEALTH_CHECK_URL%%NC%
+        echo.
+        echo %YELLOW%常用命令:%NC%
+        echo   %GREEN%查看日志: docker logs %CONTAINER_NAME%%NC%
+        echo   %GREEN%停止服务: docker stop %CONTAINER_NAME%%NC%
+        echo   %GREEN%启动服务: docker start %CONTAINER_NAME%%NC%
+        echo   %GREEN%删除容器: docker rm %CONTAINER_NAME%%NC%
+        echo.
+        echo %YELLOW%更多配置选项请参考Docker.md文档%NC%
+        pause
+        exit /b 0
+    )
+    
+    set /a RETRIES+=1
+    
+    echo %YELLOW%服务正在启动中，请稍候... (!RETRIES!/%MAX_RETRIES%)%NC%
+    
+    timeout /t 2 /nobreak > nul
+    goto :HEALTH_CHECK_LOOP_SINGLE
+    
+    :HEALTH_CHECK_FAILED_SINGLE
+    echo %RED%警告: 服务可能未正常启动，请检查日志:%NC%
+    echo %GREEN%docker logs %CONTAINER_NAME%%NC%
     pause
-	exit /b 0
+    exit /b 1
+) else (
+    set HEALTH_CHECK_URL=http://localhost:8081/api/health
+    
+    :HEALTH_CHECK_LOOP_COMPOSE
+    if %RETRIES% geq %MAX_RETRIES% goto :HEALTH_CHECK_FAILED_COMPOSE
+    
+    REM 使用PowerShell执行健康检查
+    powershell -Command "try { $response = Invoke-WebRequest -Uri '%HEALTH_CHECK_URL%' -UseBasicParsing -ErrorAction Stop; if ($response.Content -match 'ok') { exit 0 } else { exit 1 } } catch { exit 1 }" > nul 2>&1
+    
+    if %ERRORLEVEL% equ 0 (
+        echo %GREEN%服务已成功启动!%NC%
+        echo %GREEN%WebP处理服务地址: http://localhost:8081%NC%
+        echo %GREEN%健康检查: %HEALTH_CHECK_URL%%NC%
+        echo.
+        echo %YELLOW%常用命令:%NC%
+        echo   %GREEN%查看日志: docker-compose logs%NC%
+        echo   %GREEN%停止服务: docker-compose down%NC%
+        echo   %GREEN%启动服务: docker-compose up -d%NC%
+        echo.
+        echo %YELLOW%更多配置选项请参考Docker.md文档%NC%
+        pause
+        exit /b 0
+    )
+    
+    set /a RETRIES+=1
+    
+    echo %YELLOW%服务正在启动中，请稍候... (!RETRIES!/%MAX_RETRIES%)%NC%
+    
+    timeout /t 2 /nobreak > nul
+    goto :HEALTH_CHECK_LOOP_COMPOSE
+    
+    :HEALTH_CHECK_FAILED_COMPOSE
+    echo %RED%警告: 服务可能未正常启动，请检查日志:%NC%
+    echo %GREEN%docker-compose logs%NC%
+    pause
+    exit /b 1
 )
-
-set /a RETRIES+=1
-
-echo %YELLOW%服务正在启动中，请稍候... (!RETRIES!/%MAX_RETRIES%)%NC%
-
-timeout /t 2 /nobreak > nul
-goto :HEALTH_CHECK_LOOP
-
-:HEALTH_CHECK_FAILED
-echo %RED% 警告: 服务可能未正常启动，请检查日志:%NC%
-echo %GREEN% docker logs %CONTAINER_NAME% %NC%
-pause
