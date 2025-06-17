@@ -28,37 +28,168 @@ set CONTAINER_NAME=char-art-backend
 set HOST_PORT=8080
 set CONTAINER_PORT=8080
 
-REM 构建Docker镜像
-echo %GREEN%[1/4] 构建Docker镜像...%NC%
-docker build -t %IMAGE_NAME%:latest .
+REM 显示选择菜单
+echo %GREEN%请选择启动方式:%NC%
+echo %YELLOW%1. 使用Docker Run（单容器模式）%NC%
+echo %YELLOW%2. 使用Docker Compose（多容器模式）%NC%
+echo.
 
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: 构建Docker镜像失败%NC%
+set /p CHOICE=请输入选择（1或2）: 
+
+if "%CHOICE%"=="1" (
+    set USE_DOCKER_RUN=true
+) else if "%CHOICE%"=="2" (
+    set USE_DOCKER_RUN=false
+) else (
+    echo %RED%错误: 无效的选择，请输入1或2%NC%
 	pause
     exit /b 1
 )
 
-echo %GREEN%[2/4] 检查并停止已存在的容器...%NC%
-REM 检查容器是否已存在，如果存在则停止并删除
-docker ps -a | findstr "%CONTAINER_NAME%" > nul
-if %ERRORLEVEL% equ 0 (
-    echo %YELLOW%发现已存在的%CONTAINER_NAME%容器，正在停止并删除...%NC%
-    docker stop %CONTAINER_NAME% > nul 2>&1
-    docker rm %CONTAINER_NAME% > nul 2>&1
-)
+if "%USE_DOCKER_RUN%"=="true" (
+    REM 构建Docker镜像
+    echo %GREEN%[1/5] 构建Docker镜像...%NC%
+    docker build -t %IMAGE_NAME%:latest .
 
-REM 启动容器
-echo %GREEN%[3/4] 启动字符画转换器后端容器...%NC%
-docker run -d --name %CONTAINER_NAME% ^
-    -p %HOST_PORT%:%CONTAINER_PORT% ^
-    -v char-art-data:/app/data ^
-    -v char-art-logs:/app/logs ^
-    %IMAGE_NAME%:latest
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 构建Docker镜像失败%NC%
+        pause
+        exit /b 1
+    )
 
-if %ERRORLEVEL% neq 0 (
-    echo %RED%错误: 容器启动失败%NC%
-	pause
-    exit /b 1
+    echo %GREEN%[2/5] 检查并停止已存在的容器...%NC%
+    REM 检查容器是否已存在，如果存在则停止并删除
+    docker ps -a | findstr "%CONTAINER_NAME%" > nul
+    if %ERRORLEVEL% equ 0 (
+        echo %YELLOW%发现已存在的%CONTAINER_NAME%容器，正在停止并删除...%NC%
+        docker stop %CONTAINER_NAME% > nul 2>&1
+        docker rm %CONTAINER_NAME% > nul 2>&1
+    )
+
+    REM 检查网络是否存在，如果不存在则创建
+    echo %GREEN%[3/5] 检查Docker网络...%NC%
+    docker network ls | findstr "char-art-network" > nul
+    if %ERRORLEVEL% neq 0 (
+        echo %YELLOW%创建Docker网络: char-art-network%NC%
+        docker network create char-art-network
+        
+        if %ERRORLEVEL% neq 0 (
+            echo %RED%错误: 创建网络失败%NC%
+            pause
+            exit /b 1
+        )
+    )
+
+    REM 设置环境变量
+    echo %GREEN%[4/5] 配置环境变量...%NC%
+    echo %YELLOW%请为每个环境变量输入值，或直接按回车使用默认值%NC%
+    echo.
+
+    REM Redis配置
+    set /p REDIS_HOST=Redis服务器地址 (默认: localhost): 
+    if ""%REDIS_HOST%""==""" set REDIS_HOST=localhost
+
+    set /p REDIS_PORT=Redis服务器端口 (默认: 6379): 
+    if ""%REDIS_PORT%""==""" set REDIS_PORT=6379
+
+    set /p REDIS_DATABASE=Redis数据库索引 (默认: 0): 
+    if ""%REDIS_DATABASE%""==""" set REDIS_DATABASE=0
+
+    set /p REDIS_TIMEOUT=Redis连接超时时间 (默认: 60000): 
+    if ""%REDIS_TIMEOUT%""==""" set REDIS_TIMEOUT=60000
+
+    REM 字符画缓存配置
+    set /p CHAR_ART_CACHE_TTL=缓存过期时间，单位秒 (默认: 3600): 
+    if ""%CHAR_ART_CACHE_TTL%""==""" set CHAR_ART_CACHE_TTL=3600
+
+    set /p CHAR_ART_CACHE_DEFAULT_KEY_PREFIX=缓存键前缀 (默认: char-art:text:): 
+    if ""%CHAR_ART_CACHE_DEFAULT_KEY_PREFIX%""==""" set CHAR_ART_CACHE_DEFAULT_KEY_PREFIX=char-art:text:
+
+    REM WebP处理服务配置
+    set /p WEBP_PROCESSOR_URL=WebP处理服务URL (默认: http://localhost:8081): 
+    if ""%WEBP_PROCESSOR_URL%""==""" set WEBP_PROCESSOR_URL=http://localhost:8081
+
+    set /p WEBP_PROCESSOR_ENABLED=是否启用WebP处理服务 (默认: true): 
+    if ""%WEBP_PROCESSOR_ENABLED%""==""" set WEBP_PROCESSOR_ENABLED=true
+
+    set /p WEBP_PROCESSOR_CONNECTION_TIMEOUT=连接超时时间 (默认: 600000): 
+    if ""%WEBP_PROCESSOR_CONNECTION_TIMEOUT%""==""" set WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000
+
+    set /p WEBP_PROCESSOR_MAX_RETRIES=最大重试次数 (默认: 2): 
+    if ""%WEBP_PROCESSOR_MAX_RETRIES%""==""" set WEBP_PROCESSOR_MAX_RETRIES=2
+
+    REM 服务器配置
+    set /p SERVER_PORT=服务器端口 (默认: 8080): 
+    if ""%SERVER_PORT%""==""" set SERVER_PORT=8080
+    set HOST_PORT=%SERVER_PORT%
+
+    REM 上传文件配置
+    set /p MAX_FILE_SIZE=最大文件大小 (默认: 10MB): 
+    if ""%MAX_FILE_SIZE%""==""" set MAX_FILE_SIZE=10MB
+
+    set /p MAX_REQUEST_SIZE=最大请求大小 (默认: 10MB): 
+    if ""%MAX_REQUEST_SIZE%""==""" set MAX_REQUEST_SIZE=10MB
+
+    REM 日志配置
+    set /p LOG_LEVEL=日志级别 (默认: INFO): 
+    if ""%LOG_LEVEL%""==""" set LOG_LEVEL=INFO
+
+    set /p LOG_FILE_MAX_SIZE=日志文件最大大小 (默认: 10MB): 
+    if ""%LOG_FILE_MAX_SIZE%""==""" set LOG_FILE_MAX_SIZE=10MB
+
+    set /p LOG_FILE_MAX_HISTORY=日志文件保留历史数量 (默认: 30): 
+    if ""%LOG_FILE_MAX_HISTORY%""==""" set LOG_FILE_MAX_HISTORY=30
+
+    REM 字符画默认配置
+    set /p DEFAULT_DENSITY=默认字符密度 (默认: medium): 
+    if ""%DEFAULT_DENSITY%""==""" set DEFAULT_DENSITY=medium
+
+    set /p DEFAULT_COLOR_MODE=默认颜色模式 (默认: grayscale): 
+    if ""%DEFAULT_COLOR_MODE%""==""" set DEFAULT_COLOR_MODE=grayscale
+
+    REM 启动容器
+    echo %GREEN%[5/5] 启动字符画转换器后端容器...%NC%
+    docker run -d --name %CONTAINER_NAME% ^
+        -p %HOST_PORT%:%CONTAINER_PORT% ^
+        -v char-art-data:/app/data ^
+        -v char-art-logs:/app/logs ^
+        --network char-art-network ^
+        -e REDIS_HOST=%REDIS_HOST% ^
+        -e REDIS_PORT=%REDIS_PORT% ^
+        -e REDIS_DATABASE=%REDIS_DATABASE% ^
+        -e REDIS_TIMEOUT=%REDIS_TIMEOUT% ^
+        -e CHAR_ART_CACHE_TTL=%CHAR_ART_CACHE_TTL% ^
+        -e CHAR_ART_CACHE_DEFAULT_KEY_PREFIX=%CHAR_ART_CACHE_DEFAULT_KEY_PREFIX% ^
+        -e WEBP_PROCESSOR_URL=%WEBP_PROCESSOR_URL% ^
+        -e WEBP_PROCESSOR_ENABLED=%WEBP_PROCESSOR_ENABLED% ^
+        -e WEBP_PROCESSOR_CONNECTION_TIMEOUT=%WEBP_PROCESSOR_CONNECTION_TIMEOUT% ^
+        -e WEBP_PROCESSOR_MAX_RETRIES=%WEBP_PROCESSOR_MAX_RETRIES% ^
+        -e SERVER_PORT=%SERVER_PORT% ^
+        -e MAX_FILE_SIZE=%MAX_FILE_SIZE% ^
+        -e MAX_REQUEST_SIZE=%MAX_REQUEST_SIZE% ^
+        -e LOG_LEVEL=%LOG_LEVEL% ^
+        -e LOG_FILE_MAX_SIZE=%LOG_FILE_MAX_SIZE% ^
+        -e LOG_FILE_MAX_HISTORY=%LOG_FILE_MAX_HISTORY% ^
+        -e DEFAULT_DENSITY=%DEFAULT_DENSITY% ^
+        -e DEFAULT_COLOR_MODE=%DEFAULT_COLOR_MODE% ^
+        %IMAGE_NAME%:latest
+) else (
+    REM 检查Docker Compose是否安装
+    docker-compose --version > nul 2>&1
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: Docker Compose未安装。请先安装Docker Compose: https://docs.docker.com/compose/install/%NC%
+        pause
+        exit /b 1
+    )
+
+    echo %GREEN%[1/2] 使用Docker Compose启动服务...%NC%
+    docker-compose up -d
+
+    if %ERRORLEVEL% neq 0 (
+        echo %RED%错误: 启动服务失败%NC%
+        pause
+        exit /b 1
+    )
 )
 
 REM 等待服务启动
@@ -69,38 +200,78 @@ REM 检查服务健康状态
 echo %YELLOW%检查服务健康状态...%NC%
 set MAX_RETRIES=10
 set RETRIES=0
-set HEALTH_CHECK_URL=http://localhost:%HOST_PORT%/api/health
 
-:HEALTH_CHECK_LOOP
-if %RETRIES% geq %MAX_RETRIES% goto :HEALTH_CHECK_FAILED
-
-REM 使用PowerShell执行健康检查
-powershell -Command "try { $response = Invoke-WebRequest -Uri '%HEALTH_CHECK_URL%' -UseBasicParsing -ErrorAction Stop; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" > nul 2>&1
-
-if %ERRORLEVEL% equ 0 (
-    echo %GREEN%服务已成功启动!%NC%
-    echo %GREEN%API地址: http://localhost:%HOST_PORT%/api%NC%
-    echo %GREEN%健康检查: http://localhost:%HOST_PORT%/api/health%NC%
-    echo.
-    echo %YELLOW%常用命令:%NC%
-    echo   %GREEN%查看日志: docker logs %CONTAINER_NAME%%NC%
-    echo   %GREEN%停止服务: docker stop %CONTAINER_NAME%%NC%
-    echo   %GREEN%启动服务: docker start %CONTAINER_NAME%%NC%
-    echo   %GREEN%删除容器: docker rm %CONTAINER_NAME%%NC%
-    echo.
-    echo %YELLOW%更多配置选项请参考Docker.md文档%NC%
-	pause
-    exit /b 0
+if "%USE_DOCKER_RUN%"=="true" (
+    set HEALTH_CHECK_URL=http://localhost:%HOST_PORT%/api/health
+    
+    :HEALTH_CHECK_LOOP_SINGLE
+    if %RETRIES% geq %MAX_RETRIES% goto :HEALTH_CHECK_FAILED_SINGLE
+    
+    REM 使用PowerShell执行健康检查
+    powershell -Command "try { $response = Invoke-WebRequest -Uri '%HEALTH_CHECK_URL%' -UseBasicParsing -ErrorAction Stop; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" > nul 2>&1
+    
+    if %ERRORLEVEL% equ 0 (
+        echo %GREEN%服务已成功启动!%NC%
+        echo %GREEN%API地址: http://localhost:%HOST_PORT%/api%NC%
+        echo %GREEN%健康检查: %HEALTH_CHECK_URL%%NC%
+        echo.
+        echo %YELLOW%常用命令:%NC%
+        echo   %GREEN%查看日志: docker logs %CONTAINER_NAME%%NC%
+        echo   %GREEN%停止服务: docker stop %CONTAINER_NAME%%NC%
+        echo   %GREEN%启动服务: docker start %CONTAINER_NAME%%NC%
+        echo   %GREEN%删除容器: docker rm %CONTAINER_NAME%%NC%
+        echo.
+        echo %YELLOW%更多配置选项请参考Docker.md文档%NC%
+        pause
+        exit /b 0
+    )
+    
+    set /a RETRIES+=1
+    
+    echo %YELLOW%服务正在启动中，请稍候... (!RETRIES!/%MAX_RETRIES%)%NC%
+    
+    timeout /t 2 /nobreak > nul
+    goto :HEALTH_CHECK_LOOP_SINGLE
+    
+    :HEALTH_CHECK_FAILED_SINGLE
+    echo %RED%警告: 服务可能未正常启动，请检查日志:%NC%
+    echo %GREEN%docker logs %CONTAINER_NAME%%NC%
+    pause
+    exit /b 1
+) else (
+    set HEALTH_CHECK_URL=http://localhost:8080/api/health
+    
+    :HEALTH_CHECK_LOOP_COMPOSE
+    if %RETRIES% geq %MAX_RETRIES% goto :HEALTH_CHECK_FAILED_COMPOSE
+    
+    REM 使用PowerShell执行健康检查
+    powershell -Command "try { $response = Invoke-WebRequest -Uri '%HEALTH_CHECK_URL%' -UseBasicParsing -ErrorAction Stop; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" > nul 2>&1
+    
+    if %ERRORLEVEL% equ 0 (
+        echo %GREEN%服务已成功启动!%NC%
+        echo %GREEN%API地址: http://localhost:8080/api%NC%
+        echo %GREEN%健康检查: %HEALTH_CHECK_URL%%NC%
+        echo.
+        echo %YELLOW%常用命令:%NC%
+        echo   %GREEN%查看日志: docker-compose logs%NC%
+        echo   %GREEN%停止服务: docker-compose down%NC%
+        echo   %GREEN%启动服务: docker-compose up -d%NC%
+        echo.
+        echo %YELLOW%更多配置选项请参考Docker.md文档%NC%
+        pause
+        exit /b 0
+    )
+    
+    set /a RETRIES+=1
+    
+    echo %YELLOW%服务正在启动中，请稍候... (!RETRIES!/%MAX_RETRIES%)%NC%
+    
+    timeout /t 2 /nobreak > nul
+    goto :HEALTH_CHECK_LOOP_COMPOSE
+    
+    :HEALTH_CHECK_FAILED_COMPOSE
+    echo %RED%警告: 服务可能未正常启动，请检查日志:%NC%
+    echo %GREEN%docker-compose logs%NC%
+    pause
+    exit /b 1
 )
-
-set /a RETRIES+=1
-
-echo %YELLOW%服务正在启动中，请稍候... (!RETRIES!/%MAX_RETRIES%)%NC%
-
-timeout /t 2 /nobreak > nul
-goto :HEALTH_CHECK_LOOP
-
-:HEALTH_CHECK_FAILED
-echo %RED%警告: 服务可能未正常启动，请检查日志:%NC%
-echo %GREEN%docker logs %CONTAINER_NAME%%NC%
-pause

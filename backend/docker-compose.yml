@@ -68,7 +68,8 @@ services:
 networks:
   char-art-network:
     driver: bridge
-
+    name: char-art-network
+    
 volumes:
   char-art-data:
   char-art-logs:
