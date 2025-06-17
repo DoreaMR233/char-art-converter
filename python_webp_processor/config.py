@@ -7,10 +7,23 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
-# 日志级别
+# 日志配置
 LOG_LEVEL: str = os.environ.get('LOG_LEVEL', 'INFO')
-logging.basicConfig(level=getattr(logging, LOG_LEVEL), 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+LOG_FILE: str = os.environ.get('LOG_FILE', '/app/logs/webp-processor.log')
+
+# 确保日志目录存在
+log_dir = os.path.dirname(LOG_FILE)
+os.makedirs(log_dir, exist_ok=True)
+
+# 配置日志
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
 logger: logging.Logger = logging.getLogger(__name__)
 
 # 临时文件目录
@@ -26,6 +39,7 @@ else:
     SHOULD_CLEANUP_TEMP_DIR = True  # 程序结束时应清理自动创建的临时目录
 
 logger.info(f"临时文件目录: {TEMP_DIR} (自动清理: {SHOULD_CLEANUP_TEMP_DIR})")
+logger.info(f"日志文件路径: {LOG_FILE}")
 
 # 临时文件保留时间（秒）
 TEMP_FILE_TTL: int = int(os.environ.get('TEMP_FILE_TTL', 3600))
