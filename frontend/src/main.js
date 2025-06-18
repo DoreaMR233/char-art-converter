@@ -14,6 +14,15 @@ import 'element-plus/dist/index.css'
 // 导入全局样式
 import './assets/main.css'
 
+// 输出环境变量信息（仅在开发模式下）
+if (import.meta.env.DEV) {
+  console.log('当前环境:', import.meta.env.MODE)
+  console.log('API URL:', import.meta.env.VITE_API_URL)
+  console.log('Base Path:', import.meta.env.VITE_BASE_PATH)
+  console.log('应用标题:', import.meta.env.VITE_APP_TITLE)
+  console.log('应用版本:', import.meta.env.VITE_APP_VERSION)
+}
+
 /**
  * 创建Vue应用实例
  * @constant {Object} app - Vue应用实例
