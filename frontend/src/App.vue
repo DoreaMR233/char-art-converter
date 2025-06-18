@@ -3,12 +3,21 @@
     <h1 class="title">字符画转换器</h1>
     
     <div class="button-container">
-      <el-button 
-        type="primary" 
-        class="action-button"
-        @click="triggerUpload"
-        :disabled="isProcessing"
-      >导入图片</el-button>
+      <el-upload
+        class="upload-component"
+        action=""
+        :auto-upload="false"
+        :show-file-list="false"
+        :on-change="handleFileChange"
+        :before-upload="beforeUpload"
+        accept="image/jpeg,image/png,image/jpg,image/gif,image/webp,image/bmp"
+      >
+        <el-button 
+          type="primary" 
+          class="action-button"
+          :disabled="isProcessing"
+        >导入图片</el-button>
+      </el-upload>
       
       <el-button 
         type="success" 
@@ -23,14 +32,6 @@
         @click="exportAsImage" 
         :disabled="!charImageUrl || isProcessing"
       >导出为图片</el-button>
-      
-      <input 
-        type="file" 
-        ref="fileInput" 
-        style="display: none" 
-        @change="handleFileInputChange"
-        accept="image/jpeg,image/png,image/jpg,image/gif,image/webp,image/bmp"
-      >
     </div>
     
     <el-row class="options-row" justify="center">
@@ -143,8 +144,8 @@
  * 字符画转换器主组件
  * 提供图片上传、转换、导出和进度监控功能
  */
-import { ref, onMounted } from 'vue'
-import { ElMessage, ElLoading } from 'element-plus'
+import { ref, onMounted, computed } from 'vue'
+import { ElMessage, ElLoading, ElUpload } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import { convertImage, getCharText, subscribeToProgress, checkHealth } from './api'
 
@@ -197,43 +198,72 @@ let eventSource = null
 
 
 /**
- * 触发文件上传对话框
- * 通过编程方式点击隐藏的文件输入元素
+ * 计算属性 - 获取上传文件大小限制（MB）
  */
-const triggerUpload = () => {
-  // 触发隐藏的文件输入框点击事件
-  const fileInput = document.querySelector('input[type="file"]')
-  fileInput.click()
-}
+const maxUploadSize = computed(() => {
+  // 从环境变量获取上传大小限制，默认为10MB
+  return parseInt(import.meta.env.VITE_MAX_UPLOAD_SIZE || 10)
+})
 
 /**
- * 处理文件输入变化
- * 当用户选择文件后验证并处理上传的图片
- * @param {Event} event - 文件输入变化事件
+ * 上传前检查文件
+ * 验证文件类型和大小是否符合要求
+ * @param {File} file - 要上传的文件
+ * @returns {boolean|Promise<Error>} - 返回布尔值表示是否通过检查，或返回Promise.reject阻止上传
  */
-const handleFileInputChange = (event) => {
-  const file = event.target.files[0]
-  if (!file) return
-
-  // 重置字符画文本状态
-  hasCharText.value = false
-  isLargeImage.value = false
-  
+const beforeUpload = (file) => {
+  console.log(file)
+  // 检查文件类型
   const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp']
   if (!allowedTypes.includes(file.type)) {
     ElMessage.error('只能上传JPG、PNG、JPEG、GIF、WEBP、BMP格式的图片!')
-    return
+    return false
+  }
+  console.log(file.size)
+  console.log(maxUploadSize.value)
+  // 检查文件大小
+  const isLessThanLimit = file.size / 1024 / 1024 < maxUploadSize.value
+  if (!isLessThanLimit) {
+    ElMessage.error(`上传图片大小不能超过 ${maxUploadSize.value}MB!`)
+    return false
   }
   
-  imageFile.value = file
-  if (imageFile.value) {
-    imageUrl.value = URL.createObjectURL(imageFile.value)
-    imageUrlList.value = [imageUrl.value]
-    // 重置字符画相关状态
-    charImageUrl.value = ''
-    charImageUrlList.value = []
-    charText.value = ''
-    isLargeImage.value = false
+  return true
+}
+
+/**
+ * 处理文件变化
+ * 当用户选择文件后处理上传的图片
+ * @param {Object} file - Element Plus Upload组件的文件对象
+ */
+const handleFileChange = (file) => {
+  if (!file || !file.raw) return
+  hasCharText.value = false
+  isLargeImage.value = false
+  if(beforeUpload(file.raw)){
+    // 设置当前文件，覆盖之前的文件
+    imageFile.value = file.raw
+    if (imageFile.value) {
+      // 如果之前有创建的对象URL，先释放它以避免内存泄漏
+      if (imageUrl.value && imageUrl.value.startsWith('blob:')) {
+        URL.revokeObjectURL(imageUrl.value)
+      }
+      
+      // 为新图片创建对象URL
+      imageUrl.value = URL.createObjectURL(imageFile.value)
+      imageUrlList.value = [imageUrl.value]
+      
+      // 重置字符画相关状态
+      if (charImageUrl.value && charImageUrl.value.startsWith('blob:')) {
+        URL.revokeObjectURL(charImageUrl.value)
+      }
+      charImageUrl.value = ''
+      charImageUrlList.value = []
+      charText.value = ''
+      isLargeImage.value = false
+      
+      console.log('已更新图片:', imageFile.value.name)
+    }
   }
 }
 
