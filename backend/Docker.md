@@ -58,8 +58,6 @@
 ├── Dockerfile            # 用于构建后端服务的Docker镜像
 ├── docker-compose.yml    # 定义服务组合，包括后端、WebP处理服务和Redis
 ├── docker-entrypoint.sh  # 容器启动脚本，用于自定义配置
-├── run-docker.sh         # Linux/Mac快速启动脚本
-├── run-docker.bat        # Windows快速启动脚本
 └── src/                  # 源代码目录
     ├── main/             # 主要源代码
     │   ├── java/         # Java源代码
@@ -114,56 +112,18 @@ docker-compose down -v
 
 ## 使用 Docker Run 部署
 
-### 快速启动
+### 构建镜像
 
-为了简化部署过程，我们提供了快速启动脚本。
-
-#### Windows用户
-
-双击运行 `run-docker.bat` 文件，该脚本将自动执行以下操作：
-
-1. 构建Docker镜像
-2. 停止并删除已存在的同名容器（如果有）
-3. 启动新容器
-4. 检查服务健康状态
-
-```batch
-@echo off
-REM 构建Docker镜像
-docker build -t char-art-backend:latest .
-
-REM 停止并删除已存在的容器
-docker stop char-art-backend 2>nul
-docker rm char-art-backend 2>nul
-
-REM 启动新容器
-docker run -d --name char-art-backend -p 8080:8080 char-art-backend:latest
-
-REM 等待服务启动
-timeout /t 5
-
-REM 检查服务健康状态
-curl http://localhost:8080/api/health
-```
-
-#### Linux/Mac用户
+在项目根目录下执行以下命令构建Docker镜像：
 
 ```bash
-# 添加执行权限
-chmod +x run-docker.sh
-
-# 运行脚本
-./run-docker.sh
+docker build -t char-art-backend:latest .
 ```
 
-脚本内容示例：
+### 运行容器
 
 ```bash
-#!/bin/bash
-# 构建Docker镜像
-docker build -t char-art-backend:latest .
-
-# 停止并删除已存在的容器
+# 停止并删除已存在的容器（如果有）
 docker stop char-art-backend 2>/dev/null
 docker rm char-art-backend 2>/dev/null
 
@@ -177,7 +137,7 @@ sleep 5
 curl http://localhost:8080/api/health
 ```
 
-脚本执行完成后，服务将在 `http://localhost:8080/api` 上可用。
+服务启动后，将在 `http://localhost:8080/api` 上可用。
 
 ### 构建镜像
 
