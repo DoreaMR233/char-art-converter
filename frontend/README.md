@@ -14,7 +14,7 @@
 
 ## 项目结构
 
-```
+``` text
 ├── public/                # 静态资源目录
 │   └── favicon.svg       # 网站图标
 ├── src/                   # 源代码目录
@@ -42,7 +42,8 @@
    - 导出为文本文件(.txt)
    - 导出为图片文件(保留原格式)
 5. **支持多种图片格式**：JPG、PNG、JPEG、GIF、WEBP、BMP
-6. **响应式设计**：适配不同屏幕尺寸
+6. **文件大小限制**：默认限制上传文件大小为10MB，可通过环境变量配置
+7. **响应式设计**：适配不同屏幕尺寸
 
 ## 安装指南
 
@@ -61,24 +62,43 @@
    npm install
    ```
 
-3. 开发模式运行
+3. 配置环境变量（可选）
+   创建以下环境变量文件之一：
+   - `.env`：所有环境都会加载的默认环境变量
+   - `.env.development`：开发环境特定的环境变量
+   - `.env.production`：生产环境特定的环境变量
+
+   示例 `.env` 文件内容：
+   ```
+   VITE_APP_TITLE=字符画转换器
+   VITE_APP_VERSION=0.0.1
+   VITE_API_BASE_PATH=/api
+   VITE_API_URL=http://localhost:8080
+   VITE_BASE_PATH=
+   ```
+
+4. 开发模式运行
    ```bash
    npm run dev
    ```
-   应用将在 http://localhost:5173 运行
+   应用将在 http://localhost:5173 运行（可通过 VITE_PORT 环境变量修改）
 
-4. 构建生产版本
+5. 构建生产版本
    ```bash
-   
-   # 不设置资源路径前缀
+   # 使用默认配置构建
    npm run build
    
-   # 设置资源路径前缀为"app"
-   npm run build:custom --base=app
+   # 使用自定义资源路径前缀构建
+   # 方法1：通过命令行参数
+   npm run build -- --base=/char-art/
+   
+   # 方法2：通过环境变量文件(.env.production)
+   # VITE_BASE_PATH=char-art
+   npm run build
    ```
    构建后的文件将位于 `dist` 目录中
 
-5. 预览生产构建
+6. 预览生产构建
    ```bash
    npm run preview
    ```
@@ -102,16 +122,46 @@
 
 ## 配置说明
 
+### 环境变量配置
+
+本项目使用Vite的环境变量系统，支持以下环境变量：
+
+#### 通用环境变量
+
+| 变量名                  | 说明      | 默认值    |
+|----------------------|---------|--------|
+| `VITE_APP_TITLE`     | 应用名称    | 字符画转换器 |
+| `VITE_APP_VERSION`   | 应用版本    | 0.0.1  |
+| `VITE_API_BASE_PATH` | API基础路径 | /api   |
+
+#### 开发环境变量
+
+| 变量名              | 说明       | 默认值                     |
+|------------------|----------|-------------------------|
+| `VITE_API_URL`   | API服务器地址 | <http://localhost:8080> |
+| `VITE_BASE_PATH` | 资源路径前缀   | (空)                     |
+| `VITE_PORT`      | 开发服务器端口  | 5173                    |
+| `VITE_DEBUG`     | 是否启用调试模式 | true                    |
+
+#### 生产环境变量
+
+| 变量名              | 说明       | 默认值                     |
+|------------------|----------|-------------------------|
+| `VITE_API_URL`   | API服务器地址 | <http://localhost:8080> |
+| `VITE_BASE_PATH` | 资源路径前缀   | char-art                |
+| `VITE_DEBUG`     | 是否启用调试模式 | false                   |
+| `VITE_SOURCEMAP` | 是否启用源码映射 | false                   |
+
 ### 开发服务器配置
 
-在 `vite.config.js` 中配置了开发服务器，默认端口为5173，并设置了API代理：
+在 `vite.config.js` 中配置了开发服务器，默认端口为5173（可通过 VITE_PORT 环境变量修改），并设置了API代理：
 
-```javascript
+```text
 server: {
   port: 5173,
   proxy: {
-    '/api': {
-      target: 'http://localhost:8080', // 后端API服务器地址
+    [apiBasePath]: {
+      target: 'http://localhost:8080', // 后端API服务器地址，可通过 VITE_API_URL 环境变量修改
       changeOrigin: true,
       ws: true,
       rewrite: (path) => path
@@ -120,7 +170,8 @@ server: {
 }
 ```
 
-如需更改后端API地址，请修改 `target` 值。
+如需更改后端API地址，请修改环境变量 `VITE_API_URL`。
+如需更改API基础路径，请修改环境变量 `VITE_API_BASE_PATH`。
 
 ## 与后端集成
 
@@ -188,4 +239,4 @@ server: {
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](../LICENSE)

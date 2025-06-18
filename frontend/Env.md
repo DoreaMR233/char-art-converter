@@ -12,30 +12,30 @@
 
 ### 通用环境变量
 
-| 变量名 | 说明 | 默认值 |
-|-------|------|-------|
-| `VITE_APP_TITLE` | 应用名称 | 字符画转换器 |
-| `VITE_APP_VERSION` | 应用版本 | 0.0.1 |
-| `VITE_API_BASE_PATH` | API基础路径 | /api |
-| `VITE_MAX_UPLOAD_SIZE` | 上传文件最大大小（MB） | 10 |
+| 变量名                    | 说明           | 默认值    |
+|------------------------|--------------|--------|
+| `VITE_APP_TITLE`       | 应用名称         | 字符画转换器 |
+| `VITE_APP_VERSION`     | 应用版本         | 0.0.1  |
+| `VITE_API_BASE_PATH`   | API基础路径      | /api   |
+| `VITE_MAX_UPLOAD_SIZE` | 上传文件最大大小（MB） | 10     |
 
 ### 开发环境变量
 
-| 变量名 | 说明 | 默认值 |
-|-------|------|-------|
-| `VITE_API_URL` | API服务器地址 | http://localhost:8080 |
-| `VITE_BASE_PATH` | 资源路径前缀 | (空) |
-| `VITE_PORT` | 开发服务器端口 | 5173 |
-| `VITE_DEBUG` | 是否启用调试模式 | true |
+| 变量名              | 说明       | 默认值                     |
+|------------------|----------|-------------------------|
+| `VITE_API_URL`   | API服务器地址 | <http://localhost:8080> |
+| `VITE_BASE_PATH` | 资源路径前缀   | (空)                     |
+| `VITE_PORT`      | 开发服务器端口  | 5173                    |
+| `VITE_DEBUG`     | 是否启用调试模式 | true                    |
 
 ### 生产环境变量
 
-| 变量名 | 说明 | 默认值 |
-|-------|------|-------|
-| `VITE_API_URL` | API服务器地址 | http://localhost:8080 |
-| `VITE_BASE_PATH` | 资源路径前缀 | char-art |
-| `VITE_DEBUG` | 是否启用调试模式 | false |
-| `VITE_SOURCEMAP` | 是否启用源码映射 | false |
+| 变量名              | 说明       | 默认值                     |
+|------------------|----------|-------------------------|
+| `VITE_API_URL`   | API服务器地址 | <http://localhost:8080> |
+| `VITE_BASE_PATH` | 资源路径前缀   | char-art                |
+| `VITE_DEBUG`     | 是否启用调试模式 | false                   |
+| `VITE_SOURCEMAP` | 是否启用源码映射 | false                   |
 
 ## 使用方法
 
@@ -67,7 +67,7 @@ VITE_BASE_PATH=char-art
 docker run -d \
   --name char-art-frontend \
   -p 8080:80 \
-  -e VITE_API_URL=http://api.example.com \
+  -e VITE_API_URL=http://localhost:8080 \
   -e VITE_BASE_PATH=char-art \
   char-art-frontend:latest
 ```
