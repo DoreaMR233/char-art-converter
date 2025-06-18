@@ -329,8 +329,8 @@ public class CharArtProcessor {
             // 计算总像素数（所有帧）
             int totalPixels = width * height * frameCount;
 
-            // 存储每一帧的字符画图片路径
-            List<String> charFramePaths = new ArrayList<>();
+            // 存储每一帧的字符画图片
+            BufferedImage[] charFrames = new BufferedImage[frameCount];
 
             for (int i = 0; i < frameCount; i++) {
                 // 更新进度
@@ -345,16 +345,13 @@ public class CharArtProcessor {
                 int framePixelOffset = width * height * i;
                 String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, totalPixels, framePixelOffset, i + 1, frameCount, progress, progressService);
 
-                Path charFramePath = createCharImageFile(frameText, width, height, colorMode, frame, progressId, framePixelOffset, totalPixels, tempFiles, i + 1, frameCount, progress, progressService);
-                tempFiles.add(charFramePath);
-
-                // 添加到路径列表
-                charFramePaths.add(charFramePath.toString());
+                // 直接创建字符画图片对象，不保存为文件
+                charFrames[i] = createCharImage(frameText, width, height, colorMode, frame, progressId, framePixelOffset, totalPixels, i + 1, frameCount, progress, progressService);
             }
 
             // 使用WebP处理服务创建WebP动画
             progressService.updateProgress(progressId, 90, "创建WebP动画", "WebP编码", totalPixels - 1, totalPixels);
-            String webpOutputPath = webpProcessorClient.createWebpAnimation(charFramePaths, delays);
+            String webpOutputPath = webpProcessorClient.createWebpAnimation(charFrames, delays);
 
             // 读取生成的WebP文件
             tempFiles.add(Paths.get(webpOutputPath));
@@ -368,6 +365,169 @@ public class CharArtProcessor {
         } finally {
             // 清理临时文件
             cleanupTempFiles(tempFiles);
+        }
+    }
+    
+    /**
+     * 创建字符画图片对象（带进度更新）
+     * @param charText 字符画文本
+     * @param originalWidth 原始宽度 (不再使用)
+     * @param originalHeight 原始高度 (不再使用)
+     * @param colorMode 颜色模式 (grayscale, color)
+     * @param originalImage 原始图片，用于彩色模式获取颜色信息
+     * @param progressId 进度ID，用于更新进度
+     * @param pixelOffset 像素偏移量，用于计算当前处理的像素位置
+     * @param totalPixels 总像素数
+     * @param nowFrame 当前处理的帧
+     * @param totalFrame 总共需要处理的帧
+     * @param totalPercentage 总进度百分比
+     * @param progressService 进度服务
+     * @return 字符画图片对象
+     */
+    public static BufferedImage createCharImage(String charText, int originalWidth, int originalHeight, String colorMode, 
+                                     BufferedImage originalImage, String progressId, int pixelOffset, int totalPixels,
+                                     int nowFrame, int totalFrame, int totalPercentage, ProgressService progressService) {
+        try{
+            // 计算字体大小和图片尺寸
+            String[] lines = charText.split("\n");
+            int lineCount = lines.length;
+            int maxLineLength = 0;
+
+            for (String line : lines) {
+                maxLineLength = Math.max(maxLineLength, line.length());
+            }
+
+            // 设置基础字体大小 - 使用固定值以确保清晰可读
+            int baseFontSize = 12; // 基础字体大小
+
+            // 设置字体 - 使用粗体以增强颜色显示效果
+            Font font = new Font(Font.MONOSPACED, "color".equalsIgnoreCase(colorMode) ? Font.BOLD : Font.PLAIN, baseFontSize);
+
+            // 创建临时图形上下文以获取字体度量
+            BufferedImage tempImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
+            Graphics2D tempG = tempImage.createGraphics();
+            tempG.setFont(font);
+            FontMetrics metrics = tempG.getFontMetrics(font);
+            tempG.dispose();
+
+            // 计算字符宽度和行高
+            int charWidth = metrics.charWidth('M'); // 使用等宽字体的标准字符宽度
+            int lineHeight = metrics.getHeight();
+
+            // 计算图片的实际尺寸 - 基于字符画文本的尺寸
+            int imageWidth = maxLineLength * charWidth;
+            int imageHeight = lineCount * lineHeight;
+
+            // 创建最终图像
+            BufferedImage fullImage = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_RGB);
+            Graphics2D fullG = fullImage.createGraphics();
+
+            // 设置渲染质量
+            fullG.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            fullG.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            fullG.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+
+            // 设置背景 - 对于彩色模式使用深灰色背景以增强对比度
+            if ("color".equalsIgnoreCase(colorMode)) {
+                fullG.setColor(new Color(30, 30, 30)); // 深灰色背景
+            } else {
+                fullG.setColor(Color.WHITE); // 灰度模式保持白色背景
+            }
+            fullG.fillRect(0, 0, imageWidth, imageHeight);
+
+            // 设置字体
+            fullG.setFont(font);
+
+            // 计算起始位置 - 从左上角开始
+            int startX = 0;
+            int startY = metrics.getAscent(); // 只加上基线偏移
+
+            // 根据颜色模式绘制字符
+            boolean isColorMode = "color".equalsIgnoreCase(colorMode);
+
+            // 计算总字符数用于进度更新
+            int totalChars = 0;
+            for (String line : lines) {
+                totalChars += line.length();
+            }
+            int processedChars = 0;
+
+            // 分块处理
+            int blockHeight = 100; // 每次处理100行
+            int numBlocks = (int) Math.ceil((double) lineCount / blockHeight);
+            
+            for (int block = 0; block < numBlocks; block++) {
+                int startLine = block * blockHeight;
+                int endLine = Math.min(startLine + blockHeight, lineCount);
+
+                // 绘制当前块的字符
+                for (int i = startLine; i < endLine && i < lines.length; i++) {
+                    String line = lines[i];
+                    for (int j = 0; j < line.length(); j++) {
+                        char c = line.charAt(j);
+
+                        // 计算当前字符的绘制位置
+                        int x = startX + j * charWidth;
+                        int y = startY + i * lineHeight;
+
+                        if (isColorMode && originalImage != null) {
+                            // 彩色模式：从原图获取对应位置的颜色
+                            // 计算原图中对应的坐标 - 按比例映射
+                            int origX = 0;
+                            int origY = 0;
+
+                            if (maxLineLength > 0 && lineCount > 0) {
+                                origX = Math.min((int)(j * 1.0 / maxLineLength * originalImage.getWidth()), originalImage.getWidth() - 1);
+                                origY = Math.min((int)(i * 1.0 / lineCount * originalImage.getHeight()), originalImage.getHeight() - 1);
+                            }
+
+                            // 获取原始颜色
+                            Color pixelColor = new Color(originalImage.getRGB(origX, origY));
+
+                            // 增强颜色饱和度和亮度
+                            float[] hsb = Color.RGBtoHSB(pixelColor.getRed(), pixelColor.getGreen(), pixelColor.getBlue(), null);
+                            // 增加饱和度，但不超过1.0
+                            hsb[1] = Math.min(1.0f, hsb[1] * 1.5f);
+                            // 确保亮度适中，不会太暗或太亮
+                            hsb[2] = Math.max(0.3f, Math.min(0.9f, hsb[2] * 1.2f));
+
+                            Color enhancedColor = Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
+                            fullG.setColor(enhancedColor);
+                        } else {
+                            // 灰度模式：使用黑色
+                            fullG.setColor(Color.BLACK);
+                        }
+
+                        if (isColorMode) { // 对于彩色模式的所有字符（包括空格）
+                            // 先绘制背景色块
+                            fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
+
+                            // 对于非空格字符，绘制白色字符以增强可读性
+                            if (c != ' ') {
+                                fullG.setColor(Color.WHITE);
+                                fullG.drawString(String.valueOf(c), x, y);
+                            }
+                        } else {
+                            // 灰度模式：使用黑色字符
+                            fullG.setColor(Color.BLACK);
+                            fullG.drawString(String.valueOf(c), x, y);
+                        }
+
+                        // 更新进度
+                        processedChars++;
+                        if (progressId != null && (processedChars % 500 == 0 || processedChars == totalChars)) {
+                            // 计算当前处理的实际像素位置（考虑偏移量）
+                            int currentPixel = pixelOffset + (int)((double)processedChars / totalChars * Objects.requireNonNull(originalImage).getWidth() * originalImage.getHeight());
+                            progressService.updateProgress(progressId, totalPercentage, "生成字符画图片: " + currentPixel + "/" + totalPixels + " 像素", "图像渲染（第"+nowFrame+"/"+totalFrame+"帧）", currentPixel, totalPixels);
+                        }
+                    }
+                }
+            }
+
+            fullG.dispose();
+            return fullImage;
+        } catch (Exception e) {
+            throw new ServiceException("创建动态字符画图片对象失败: " + e.getMessage(), e);
         }
     }
 
