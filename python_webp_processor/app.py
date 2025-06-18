@@ -1,6 +1,7 @@
 from flask import Flask
 from config import MAX_CONTENT_LENGTH, PORT, DEBUG, TEMP_DIR, SHOULD_CLEANUP_TEMP_DIR
 from utils.utils import cleanup_temp_files
+from utils.scheduler import init_scheduler, shutdown_scheduler
 import logging
 import atexit
 import shutil
@@ -28,6 +29,9 @@ def create_app() -> Flask:
 # 注册退出时的清理函数
 def cleanup_on_exit():
     """程序退出时执行的清理函数"""
+    # 关闭调度器
+    shutdown_scheduler()
+    
     # 先清理临时文件
     cleanup_temp_files()
     
@@ -48,6 +52,9 @@ if __name__ == '__main__':
     
     # 创建应用
     app = create_app()
+    
+    # 初始化并启动调度器
+    init_scheduler()
     
     # 启动应用
     logger.info(f"启动WebP处理服务，监听端口: {PORT}, 调试模式: {DEBUG}")
