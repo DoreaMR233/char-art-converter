@@ -14,12 +14,9 @@
     - [访问服务](#访问服务)
     - [停止服务](#停止服务)
   - [使用 Docker Run 部署](#使用-docker-run-部署)
-    - [快速启动](#快速启动)
-      - [Windows用户](#windows用户)
-      - [Linux/Mac用户](#linuxmac用户)
     - [构建镜像](#构建镜像)
     - [运行容器](#运行容器)
-    - [验证服务状态](#验证服务状态-1)
+    - [验证容器服务状态](#验证容器服务状态)
   - [配置参数](#配置参数)
     - [环境变量](#环境变量)
       - [服务器配置](#服务器配置)
@@ -45,13 +42,11 @@
 
 ## 项目结构
 
-```
+``` text
 ./
 ├── Dockerfile            # 用于构建WebP处理服务的Docker镜像
 ├── docker-compose.yml    # 定义服务组合
 ├── docker-entrypoint.sh  # 容器启动脚本，用于配置环境变量
-├── run-docker.sh         # Linux/Mac快速启动脚本
-├── run-docker.bat        # Windows快速启动脚本
 ├── app.py                # 应用入口
 ├── config.py             # 配置文件
 ├── requirements.txt      # 依赖项
@@ -98,31 +93,6 @@ docker-compose down
 
 ## 使用 Docker Run 部署
 
-### 快速启动
-
-为了简化部署过程，我们提供了快速启动脚本。
-
-#### Windows用户
-
-双击运行 `run-docker.bat` 文件，该脚本将自动执行以下操作：
-
-1. 构建Docker镜像
-2. 停止并删除已存在的同名容器（如果有）
-3. 启动新容器
-4. 检查服务健康状态
-
-#### Linux/Mac用户
-
-```bash
-# 添加执行权限
-chmod +x run-docker.sh
-
-# 运行脚本
-./run-docker.sh
-```
-
-脚本执行完成后，服务将在 `http://localhost:8081` 上可用。
-
 ### 构建镜像
 
 在项目根目录下执行以下命令构建Docker镜像：
@@ -150,7 +120,7 @@ docker run -d \
 
 这将以默认配置启动WebP处理服务，并将容器的5000端口映射到主机的8081端口。
 
-### 验证服务状态
+### 验证容器服务状态
 
 ```bash
 # 查看容器状态

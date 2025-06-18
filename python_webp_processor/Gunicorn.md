@@ -17,12 +17,12 @@
 
 除了原有的环境变量外，新增了以下 Gunicorn 相关的环境变量：
 
-| 变量名 | 说明 | 默认值 |
-|-------|------|-------|
-| `GUNICORN_WORKERS` | 工作进程数 | CPU核心数×2+1 |
-| `GUNICORN_TIMEOUT` | 请求超时时间(秒) | 120 |
-| `GUNICORN_MAX_REQUESTS` | 每个工作进程处理的最大请求数 | 1000 |
-| `GUNICORN_MAX_REQUESTS_JITTER` | 最大请求数的随机抖动值 | 50 |
+| 变量名                            | 说明             | 默认值        |
+|--------------------------------|----------------|------------|
+| `GUNICORN_WORKERS`             | 工作进程数          | CPU核心数×2+1 |
+| `GUNICORN_TIMEOUT`             | 请求超时时间(秒)      | 120        |
+| `GUNICORN_MAX_REQUESTS`        | 每个工作进程处理的最大请求数 | 1000       |
+| `GUNICORN_MAX_REQUESTS_JITTER` | 最大请求数的随机抖动值    | 50         |
 
 ### 配置文件
 
@@ -33,7 +33,8 @@
 bind = "0.0.0.0:5000"
 
 # 工作进程数
-workers = 多核CPU数量×2+1
+# 多核CPU数量×2+1
+workers = 5
 
 # 工作模式
 worker_class = 'sync'
@@ -49,15 +50,15 @@ errorlog = "/app/logs/error.log"
 
 1. 安装依赖：
 
-```bash
-pip install -r requirements.txt
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 2. 使用 Gunicorn 启动服务：
 
-```bash
-gunicorn --config gunicorn.conf.py wsgi:application
-```
+    ```bash
+    gunicorn --config gunicorn.conf.py wsgi:application
+    ```
 
 ### Docker 环境
 

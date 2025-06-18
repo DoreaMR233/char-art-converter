@@ -18,11 +18,13 @@
 
 - **Python 3.6+**：核心编程语言
 - **Flask 2.0.1**：Web框架
+- **Gunicorn 20.1.0**：WSGI HTTP服务器，用于生产环境部署
 - **Pillow 9.0.0**：图像处理库，用于WebP解析和处理
 - **python-dotenv 0.19.0**：环境变量管理
 - **requests 2.26.0**：HTTP客户端
 - **ffmpeg-python 0.2.0**：视频处理支持
 - **Werkzeug 2.0.1**：WSGI工具库
+- **setproctitle 1.3.2**：设置进程名称，便于监控（生产环境推荐）
 
 ## 项目结构
 
@@ -37,11 +39,12 @@
 ├── .env                    # 环境变量配置文件
 ├── app.py                  # 应用入口
 ├── config.py               # 配置管理
+├── wsgi.py                 # WSGI入口点，用于Gunicorn
+├── gunicorn.conf.py        # Gunicorn配置文件
 ├── Dockerfile              # Docker构建文件
 ├── docker-compose.yml      # Docker Compose配置
-├── requirements.txt        # 依赖项列表
-├── start.bat               # Windows启动脚本
-└── start.sh                # Linux/Mac启动脚本
+├── docker-entrypoint.sh    # Docker容器入口脚本
+└── requirements.txt        # 依赖项列表
 ```
 
 ## API接口
@@ -58,9 +61,9 @@
 **返回**:
 ```json
 {
-    "frameCount": 帧数,
-    "delays": [帧1延迟, 帧2延迟, ...],
-    "frames": [帧1的base64编码, 帧2的base64编码, ...]
+    "frameCount": "帧数",
+    "delays": ["帧1延迟", "帧2延迟", "..."],
+    "frames": ["帧1的base64编码", "帧2的base64编码", "..."]
 }
 ```
 
@@ -80,8 +83,8 @@
 **请求体** (JSON):
 ```json
 {
-    "framePaths": ["路径1", "路径2", ...],
-    "delays": [延迟1, 延迟2, ...]
+    "framePaths": ["路径1", "路径2", "..."],
+    "delays": ["延迟1", "延迟2", "..."]
 }
 ```
 
@@ -149,67 +152,83 @@
 
 2. 安装依赖包：
 
-```bash
-pip install -r requirements.txt
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-3. 运行应用：
+3. 运行应用（开发模式）：
 
-```bash
-python app.py
-```
+    ```bash
+    python app.py
+    ```
 
-### 方法二：使用虚拟环境（推荐）
+4. 使用Gunicorn运行（生产模式）：
 
-#### Windows
+    ```bash
+    gunicorn --config gunicorn.conf.py wsgi:application
+    ```
 
-```bash
-# 运行启动脚本
-start.bat
-```
-
-#### Linux/Mac
+### 方法二：直接使用Gunicorn（推荐）
 
 ```bash
-# 添加执行权限
-chmod +x start.sh
-
-# 运行启动脚本
-./start.sh
+# 使用Gunicorn启动
+gunicorn --config gunicorn.conf.py wsgi:application
 ```
 
 ### 方法三：Docker部署
 
 1. 构建并启动容器：
 
-```bash
-docker-compose up -d
-```
+   ```bash
+   docker-compose up -d
+   ```
 
 2. 查看日志：
 
-```bash
-docker-compose logs -f
-```
+   ```bash
+   docker-compose logs -f
+   ```
 
 3. 停止服务：
 
+   ```bash
+   docker-compose down
+   ```
+
+4. 使用自定义Gunicorn配置启动容器：
+
 ```bash
-docker-compose down
+docker run -d \
+  --name webp-processor \
+  -p 8081:5000 \
+  -e GUNICORN_WORKERS=4 \
+  -e GUNICORN_TIMEOUT=180 \
+  webp-processor:latest
 ```
 
 ## 配置选项
 
 服务可通过环境变量或`.env`文件进行配置：
 
-| 环境变量 | 描述 | 默认值 |
-|---------|------|-------|
-| `PORT` | 服务监听端口 | 5000 |
-| `LOG_LEVEL` | 日志级别 (DEBUG, INFO, WARNING, ERROR) | INFO |
-| `DEBUG` | 调试模式 | False |
-| `MAX_CONTENT_LENGTH` | 最大上传文件大小（字节） | 10485760 (10MB) |
-| `TEMP_DIR` | 临时文件目录 | 自动创建的临时目录 |
-| `TEMP_FILE_TTL` | 临时文件保留时间（秒） | 3600 (1小时) |
+### 基本配置
+
+| 环境变量                 | 描述                                 | 默认值             |
+|----------------------|------------------------------------|-----------------|
+| `PORT`               | 服务监听端口                             | 5000            |
+| `LOG_LEVEL`          | 日志级别 (DEBUG, INFO, WARNING, ERROR) | INFO            |
+| `DEBUG`              | 调试模式                               | False           |
+| `MAX_CONTENT_LENGTH` | 最大上传文件大小（字节）                       | 10485760 (10MB) |
+| `TEMP_DIR`           | 临时文件目录                             | 自动创建的临时目录       |
+| `TEMP_FILE_TTL`      | 临时文件保留时间（秒）                        | 3600 (1小时)      |
+
+### Gunicorn配置
+
+| 环境变量                           | 描述             | 默认值        |
+|--------------------------------|----------------|------------|
+| `GUNICORN_WORKERS`             | 工作进程数          | CPU核心数×2+1 |
+| `GUNICORN_TIMEOUT`             | 请求超时时间(秒)      | 120        |
+| `GUNICORN_MAX_REQUESTS`        | 每个工作进程处理的最大请求数 | 1000       |
+| `GUNICORN_MAX_REQUESTS_JITTER` | 最大请求数的随机抖动值    | 50         |
 
 ## 与Java后端集成
 
@@ -259,6 +278,83 @@ docker-compose down
    - 检查WebP文件是否为有效的动图
    - 检查Pillow库是否正确安装并支持WebP格式
 
+## Gunicorn部署
+
+### 为什么使用Gunicorn
+
+- **并发处理能力**：Gunicorn使用预分叉工作模式，可以同时处理多个请求
+- **稳定性**：自动处理崩溃的工作进程，提高服务可靠性
+- **资源利用**：更有效地利用多核处理器
+- **生产级别**：适合生产环境的WSGI HTTP服务器
+
+### Gunicorn配置文件
+
+服务使用`gunicorn.conf.py`作为Gunicorn的配置文件，包含以下主要设置：
+
+```python
+# 绑定的IP和端口
+bind = "0.0.0.0:5000"
+
+# 工作进程数
+# 设置为多核CPU数量×2+1
+workers = 5
+
+# 工作模式
+worker_class = 'sync'
+
+# 日志配置
+accesslog = "/app/logs/access.log"
+errorlog = "/app/logs/error.log"
+```
+
+### 性能调优
+
+#### 工作进程数量
+
+工作进程数量的最佳值取决于服务器的CPU核心数和内存大小。一般建议：
+
+- CPU密集型应用：`CPU核心数 + 1`
+- I/O密集型应用：`CPU核心数 × 2 + 1`
+
+对于WebP处理服务，由于涉及图像处理，属于CPU和I/O混合型，默认使用`CPU核心数 × 2 + 1`的配置。
+
+#### 最大请求数
+
+设置`GUNICORN_MAX_REQUESTS`可以防止内存泄漏，当工作进程处理的请求数达到这个值时，会自动重启。
+
+`GUNICORN_MAX_REQUESTS_JITTER`添加随机抖动，防止所有工作进程同时重启。
+
+### 监控
+
+#### 日志
+
+Gunicorn的访问日志和错误日志分别保存在：
+
+- 访问日志：`/app/logs/access.log`
+- 错误日志：`/app/logs/error.log`
+
+### 常见问题
+
+#### 1. 请求超时
+
+如果处理大型WebP文件时出现超时，可以增加`GUNICORN_TIMEOUT`的值：
+
+```bash
+docker run -d --name webp-processor -p 8081:5000 -e GUNICORN_TIMEOUT=300 webp-processor:latest
+```
+
+#### 2. 内存使用过高
+
+如果服务器内存有限，可以减少工作进程数量：
+
+```bash
+docker run -d --name webp-processor -p 8081:5000 -e GUNICORN_WORKERS=2 webp-processor:latest
+```
+
+#### 3. 进程没有自动重启
+
+检查Docker的重启策略是否设置为`unless-stopped`或`always`。
+
 ## 开发指南
 
 ### 添加新API端点
@@ -280,4 +376,4 @@ docker build -t webp-processor .
 
 ## 许可证
 
-[MIT License](LICENSE)
+[MIT License](../LICENSE)
