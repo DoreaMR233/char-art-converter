@@ -29,8 +29,14 @@ export MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-16777216}
 export TEMP_FILE_TTL=${TEMP_FILE_TTL:-3600}
 export LOG_LEVEL=${LOG_LEVEL:-INFO}
 
+# 设置Gunicorn相关环境变量
+export GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+export GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
+export GUNICORN_MAX_REQUESTS=${GUNICORN_MAX_REQUESTS:-1000}
+export GUNICORN_MAX_REQUESTS_JITTER=${GUNICORN_MAX_REQUESTS_JITTER:-50}
+
 /app/webp-processor/docker-entrypoint.sh &
-echo "WebP处理器服务已启动在端口: 5000"
+echo "WebP处理器服务已使用Gunicorn启动在端口: 5000"
 
 # 配置Nginx
 echo "[4/5] 配置Nginx服务..."
@@ -43,9 +49,20 @@ if [ -n "$BASE_PATH" ]; then
   /app/frontend/docker-entrypoint.sh
 fi
 
+if [ -n "$WEBP_PROCESSOR_URL" ]; then
+  echo "WebP处理器环境变量: $WEBP_PROCESSOR_URL"
+    cd /app/backend
+    export WEBP_PROCESSOR_URL=$WEBP_PROCESSOR_URL
+    /app/backend/docker-entrypoint.sh
+fi
+
 # 创建Nginx配置文件
 cat > /etc/nginx/conf.d/default.conf << EOF
 server {
+    #文件大小配置
+    client_max_body_size 100m;
+
+
     listen 80;
     server_name localhost;
 

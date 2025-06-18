@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   # 字符画转换器后端服务
-  char-art-backend:
+  backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -19,9 +19,9 @@ services:
       - CHAR_ART_CACHE_TTL=3600
       - CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:"
       # WebP处理服务配置
-      - WEBP_PROCESSOR_URL=http://webp-processor:5000
+      - WEBP_PROCESSOR_URL=http://webp-processor-backend:5000
       - WEBP_PROCESSOR_ENABLED=true
-      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=5000
+      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000
       - WEBP_PROCESSOR_MAX_RETRIES=2
       # 服务器配置
       - SERVER_PORT=8080
@@ -37,7 +37,7 @@ services:
       - DEFAULT_COLOR_MODE=grayscale
     depends_on:
       - redis
-      - webp-processor
+      - webp-processor-backend
     restart: unless-stopped
     networks:
       - char-art-network
@@ -46,11 +46,11 @@ services:
       - char-art-logs:/app/logs
 
   # WebP处理服务
-  webp-processor:
+  webp-processor-backend:
     build:
       context: ./python_webp_processor
       dockerfile: Dockerfile
-    container_name: webp-processor
+    container_name: char-art-webp-processor
     ports:
       - "8081:5000"
     environment:
@@ -60,6 +60,11 @@ services:
       - DEBUG=False
       - MAX_CONTENT_LENGTH=16777216
       - TEMP_FILE_TTL=3600
+      # Gunicorn配置
+      - GUNICORN_WORKERS=4  # 工作进程数，建议设置为CPU核心数×2+1
+      - GUNICORN_TIMEOUT=120  # 请求超时时间(秒)
+      - GUNICORN_MAX_REQUESTS=1000  # 每个工作进程处理的最大请求数
+      - GUNICORN_MAX_REQUESTS_JITTER=50  # 最大请求数的随机抖动值
     volumes:
       - webp-processor-data:/app/data
       - webp-processor-logs:/app/logs
@@ -85,16 +90,18 @@ services:
       - char-art-network
   
   # 字符画转换器前端服务
-  char-art-frontend:
+  frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: char-art-frontend
     ports:
-      - "8080:80"
+      - "80:80"
     environment:
-      - BASE_PATH=/char-art/
-      - API_URL=http://char-art-backend:8080
+      - API_URL=http://backend:8080
+      - VITE_BASE_PATH=
+      - MAX_UPLOAD_SIZE=10
+      - VITE_API_BASE_PATH=/api
     restart: unless-stopped
     networks:
       - char-art-network
