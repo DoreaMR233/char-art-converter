@@ -4,12 +4,15 @@
  */
 import axios from 'axios'
 
+// 从环境变量获取API配置
+const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || '/api'
+
 /**
  * 创建axios实例，配置基本参数
  * @constant {Object} api - 配置好的axios实例
  */
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_PATH,
   timeout: 60000, // 较长的超时时间，因为图片处理可能需要时间
 })
 
