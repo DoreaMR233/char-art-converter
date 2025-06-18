@@ -9,8 +9,15 @@ services:
     ports:
       - "8080:80"
     environment:
-      - BASE_PATH=/char-art/
+      # Vite环境变量
+      - VITE_BASE_PATH=char-art
+      - VITE_API_URL=http://char-art-backend:8080
+      - VITE_API_BASE_PATH=/api
+      - VITE_MAX_UPLOAD_SIZE=10
+      # 兼容旧版本的环境变量
+      - BASE_PATH=char-art
       - API_URL=http://char-art-backend:8080
+      - MAX_UPLOAD_SIZE=10
     restart: unless-stopped
     networks:
       - char-art-network
