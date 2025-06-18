@@ -350,11 +350,11 @@ public class CharArtController {
             if(flaskServiceAvailable){
                 response.put("status", "UP");
                 response.put("webpProcessor", "UP");
-                response.put("message", "字符画转换服务正常运行，Webp处理服务正常运行");
+                response.put("message", "字符画转换服务正常，Webp处理服务正常");
             }else{
                 response.put("status", "UP");
                 response.put("webpProcessor", "DOWN");
-                response.put("message", "字符画转换服务正常，Webp处理服务正常");
+                response.put("message", "字符画转换服务正常，Webp处理服务异常");
             }
             log.info("健康检查: 主服务状态=UP, Flask服务状态={}", flaskServiceAvailable ? "UP" : "DOWN");
         }else{
