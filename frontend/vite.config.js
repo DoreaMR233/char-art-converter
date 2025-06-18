@@ -3,20 +3,39 @@
  * 定义项目的构建和开发服务器配置
  */
 
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
-// 获取环境变量中的BASE_PATH，如果未设置则默认为空字符串
-const basePath = process.env.BASE_PATH || '';
-// 获取环境变量API_URL，如果未设置则为http://localhost:8080
-const apiUrl = process.env.API_URL || 'http://localhost:8080';
-
 /**
- * Vite配置导出
- * @see https://vitejs.dev/config/
+ * 环境变量配置
+ * @param {Object} env - 环境变量对象
+ * @param {string} mode - 当前模式（development/production）
  */
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // 加载环境变量
+  const env = loadEnv(mode, process.cwd())
+  
+  // 获取环境变量中的BASE_PATH，如果未设置则默认为空字符串
+  const basePath = env.VITE_BASE_PATH || '';
+  // 获取环境变量API_URL，如果未设置则为http://localhost:8080
+  const apiUrl = env.VITE_API_URL || 'http://localhost:8080';
+  // 获取API基础路径，如果未设置则为/api
+  const apiBasePath = env.VITE_API_BASE_PATH || '/api';
+  // 获取开发服务器端口
+  const port = parseInt(env.VITE_PORT || '5173');
+  // 是否启用源码映射
+  const sourcemap = env.VITE_SOURCEMAP === 'true';
+  
+  console.log(`当前模式: ${mode}`);
+  console.log(`API URL: ${apiUrl}`);
+  console.log(`API Base Path: ${apiBasePath}`);
+  console.log(`Base Path: ${basePath}`);
+  console.log(`Port: ${port}`);
+  console.log(`Sourcemap: ${sourcemap}`);
+  
+  return {
+
   /**
    * 插件配置
    * @property {Array} plugins - Vite插件列表
@@ -31,13 +50,13 @@ export default defineConfig({
    * @property {Object} server - 服务器选项
    */
   server: {
-    port: 5173,
+    port: port,
     /**
      * API代理配置
-     * 将/api开头的请求代理到后端服务器
+     * 将API基础路径开头的请求代理到后端服务器
      */
     proxy: {
-      '/api': {
+      [apiBasePath]: {
         target: apiUrl, // 后端API服务器地址
         changeOrigin: true, // 修改请求头中的Host为目标URL
         ws: true,
@@ -115,5 +134,18 @@ export default defineConfig({
        */
       '@': path.resolve(__dirname, 'src')
     }
+  },
+  
+  /**
+   * 构建配置
+   * @property {Object} build - 构建选项
+   */
+  build: {
+    /**
+     * 源码映射配置
+     * 在生产环境中可以通过环境变量控制是否生成源码映射
+     */
+    sourcemap: sourcemap
+  }
   }
 })
