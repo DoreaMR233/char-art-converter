@@ -39,6 +39,7 @@
 - **参数**:
   - `filename`: (必需) 原始文件名，用于在缓存中查找对应的字符画文本
 - **响应**: JSON格式，包含查找结果和字符画文本
+
   ```json
   {
     "find": true,
@@ -66,6 +67,7 @@
 - **URL**: `/api/health`
 - **方法**: GET
 - **响应**: JSON格式，包含服务状态信息
+
   ```json
   {
     "status": "UP",
@@ -90,7 +92,7 @@
 
 ## 项目结构
 
-```
+``` text
 backend/
 ├── src/
 │   ├── main/
@@ -166,34 +168,35 @@ webp-processor.max-retries=2
 
 1. 克隆项目到本地
 
-```bash
-git clone https://github.com/yourusername/char-art-converter.git
-cd char-art-converter/backend
-```
+    ```bash
+    git clone https://github.com/yourusername/char-art-converter.git
+    cd char-art-converter/backend
+    ```
 
 2. 编译项目
 
-```bash
-mvn clean package
-```
+    ```bash
+    mvn clean package
+    ```
 
 3. 运行项目
 
-```bash
-java -jar target/char-art-converter-0.0.1-SNAPSHOT.jar
-```
+    ```bash
+    java -jar target/char-art-converter-0.0.1-SNAPSHOT.jar
+    ```
 
-或者使用Maven直接运行：
+    或者使用Maven直接运行：
 
-```bash
-mvn spring-boot:run
-```
+    ```bash
+    mvn spring-boot:run
+    ```
 
 4. 访问服务
 
 服务启动后，可以通过以下URL访问：
-- API接口: http://localhost:8080/api
-- 健康检查: http://localhost:8080/api/health
+
+- API接口: <http://localhost:8080/api>
+- 健康检查: <http://localhost:8080/api/health>
 
 ## 注意事项
 
@@ -202,6 +205,7 @@ mvn spring-boot:run
 2. **WebP处理服务**：处理WebP动图需要Python WebP处理服务，请确保该服务已启动并配置正确的URL。
 
 3. **内存配置**：处理大图片或高分辨率GIF可能需要较大的内存，可以通过JVM参数调整内存大小：
+
    ```bash
    java -Xmx1g -jar target/char-art-converter-0.0.1-SNAPSHOT.jar
    ```
@@ -233,4 +237,4 @@ private static final String[] CHAR_SETS = {
 
 ## 许可证
 
-[MIT License](LICENSE)
+[MIT License](../LICENSE)
