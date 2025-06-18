@@ -176,4 +176,4 @@ docker run -d -p 5000:5000 --name python-webp-processor python-webp-processor
 
 ## 许可证
 
-[MIT License](../LICENSE)
+[MIT License](LICENSE)
