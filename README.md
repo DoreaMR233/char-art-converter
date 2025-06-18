@@ -52,7 +52,7 @@
 
 ## 项目结构
 
-```
+``` text
 char-art-converter/
 ├── frontend/                # 前端项目
 │   ├── public/              # 静态资源
@@ -152,6 +152,12 @@ cd python_webp_processor
 
 # 使用Docker Compose启动
 docker-compose up -d
+
+# 构建Docker镜像
+docker build -t python-webp-processor .
+
+# 运行Docker容器
+docker run -d -p 5000:5000 --name python-webp-processor python-webp-processor
 ```
 
 ## 环境要求
@@ -170,4 +176,4 @@ docker-compose up -d
 
 ## 许可证
 
-MIT License
+[MIT License](../LICENSE)

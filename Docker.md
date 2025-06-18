@@ -65,8 +65,6 @@
 ├── Dockerfile                # 一体化Dockerfile，包含所有组件
 ├── docker-compose.yml        # 定义服务组合
 ├── docker-start.sh           # 容器启动脚本
-├── run-all-docker.sh         # Linux/Mac快速启动脚本
-├── run-all-docker.bat        # Windows快速启动脚本
 ├── frontend/                 # 前端服务目录
 │   ├── Dockerfile            # 前端服务的Dockerfile
 │   ├── docker-compose.yml    # 前端服务的Docker Compose配置
@@ -192,72 +190,33 @@ docker logs -f char-art-app
 
 服务启动后，可以通过 `http://localhost:80` 访问应用。如果配置了 `BASE_PATH` 环境变量，则应通过 `http://localhost:80/{BASE_PATH}` 访问。
 
-## 快速启动
+## 手动部署
 
-为了简化部署过程，我们提供了快速启动脚本。
+### 构建镜像
 
-### Windows用户
-
-双击运行 `run-all-docker.bat` 文件，该脚本将自动执行以下操作：
-
-1. 构建Docker镜像
-2. 停止并删除已存在的同名容器（如果有）
-3. 启动新容器
-4. 检查服务健康状态
-
-```batch
-@echo off
-echo 构建字符画转换器Docker镜像...
-docker build -t char-art-converter:latest .
-
-echo 停止并删除现有容器...
-docker rm -f char-art-app 2>nul
-
-echo 启动新容器...
-docker run -d --name char-art-app -p 80:80 char-art-converter:latest
-
-echo 等待服务启动...
-timeout /t 5 /nobreak
-
-echo 检查服务状态...
-docker ps | findstr char-art-app
-
-echo 应用已启动，请访问 http://localhost:80
-```
-
-### Linux/Mac用户
+在项目根目录下执行以下命令构建Docker镜像：
 
 ```bash
-# 添加执行权限
-chmod +x run-all-docker.sh
-
-# 运行脚本
-./run-all-docker.sh
+docker build -t char-art-converter:latest .
 ```
 
-脚本内容示例：
+### 运行容器
 
 ```bash
-#!/bin/bash
-echo "构建字符画转换器Docker镜像..."
-docker build -t char-art-converter:latest .
-
-echo "停止并删除现有容器..."
+# 停止并删除已存在的容器（如果有）
 docker rm -f char-art-app 2>/dev/null || true
 
-echo "启动新容器..."
+# 启动新容器
 docker run -d --name char-art-app -p 80:80 char-art-converter:latest
 
-echo "等待服务启动..."
+# 等待服务启动
 sleep 5
 
-echo "检查服务状态..."
+# 检查服务状态
 docker ps | grep char-art-app
-
-echo "应用已启动，请访问 http://localhost:80"
 ```
 
-脚本执行完成后，服务将在 `http://localhost:80` 上可用。
+服务启动后，将在 `http://localhost:80` 上可用。
 
 ## 配置参数
 
