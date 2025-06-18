@@ -55,5 +55,25 @@ echo "-------------------"
 cat "$ENV_FILE"
 echo "-------------------"
 
+# 设置Gunicorn工作进程数（如果未设置）
+if [ ! -z "$GUNICORN_WORKERS" ]; then
+  echo "GUNICORN_WORKERS=$GUNICORN_WORKERS" >> "$ENV_FILE"
+else
+  # 默认为CPU核心数*2+1
+  WORKERS=$(( $(nproc) * 2 + 1 ))
+  echo "GUNICORN_WORKERS=$WORKERS" >> "$ENV_FILE"
+fi
+
+# 设置Gunicorn超时时间（如果未设置）
+if [ ! -z "$GUNICORN_TIMEOUT" ]; then
+  echo "GUNICORN_TIMEOUT=$GUNICORN_TIMEOUT" >> "$ENV_FILE"
+else
+  echo "GUNICORN_TIMEOUT=120" >> "$ENV_FILE"
+fi
+
+# 清理过期的临时文件
+python -c "from utils.utils import cleanup_temp_files; cleanup_temp_files()"
+
 # 启动应用
-exec python app.py
+echo "使用Gunicorn启动WebP处理服务..."
+exec gunicorn --config gunicorn.conf.py wsgi:application

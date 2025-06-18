@@ -16,6 +16,11 @@ services:
       - DEBUG=False
       - MAX_CONTENT_LENGTH=16777216
       - TEMP_FILE_TTL=3600
+      # Gunicorn配置
+      - GUNICORN_WORKERS=4  # 工作进程数，建议设置为CPU核心数×2+1
+      - GUNICORN_TIMEOUT=120  # 请求超时时间(秒)
+      - GUNICORN_MAX_REQUESTS=1000  # 每个工作进程处理的最大请求数
+      - GUNICORN_MAX_REQUESTS_JITTER=50  # 最大请求数的随机抖动值
     volumes:
       - webp-processor-data:/app/data
       - webp-processor-logs:/app/logs
