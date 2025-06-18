@@ -1,6 +1,7 @@
 from flask import request, jsonify
 import os
 import io
+from io import BytesIO
 import base64
 import traceback
 import logging
@@ -121,22 +122,17 @@ def process_webp() -> Tuple[Dict[str, Any], int]:
         logger.error(f"处理WebP时出错: {str(e)}\n{error_details}")
         return jsonify({"error": f"处理失败: {str(e)}"}), 500
     finally:
-        # 清理临时文件
-        try:
-            if 'temp_path' in locals() and os.path.exists(temp_path):
-                os.remove(temp_path)
-                logger.info(f"已删除临时文件: {temp_path}")
-        except Exception as e:
-            logger.warning(f"清理临时文件失败: {str(e)}")
+        # 临时文件将由定时任务清理
+        pass
 
 @api_bp.route('/create-webp-animation', methods=['POST'])
 def create_webp_animation() -> Tuple[Dict[str, Any], int]:
     """
-    接收字符画图片临时文件路径列表，将它们组合成一个新的WebP动画
+    接收Base64编码的字符画图片列表，将它们组合成一个新的WebP动画
     
     请求格式：
     {
-        "framePaths": ["路径1", "路径2", ...],
+        "frameImages": ["Base64编码的图片1", "Base64编码的图片2", ...],
         "delays": [延迟1, 延迟2, ...]
     }
     
@@ -160,38 +156,39 @@ def create_webp_animation() -> Tuple[Dict[str, Any], int]:
         data = request.get_json()
         
         # 检查必要的字段
-        if 'framePaths' not in data or 'delays' not in data:
+        if 'frameImages' not in data or 'delays' not in data:
             logger.warning("请求缺少必要的字段")
-            return jsonify({"error": "请求必须包含framePaths和delays字段"}), 400
+            return jsonify({"error": "请求必须包含frameImages和delays字段"}), 400
         
-        frame_paths = data['framePaths']
+        frame_images_base64 = data['frameImages']
         delays = data['delays']
         
-        # 检查路径列表和延迟列表长度是否一致
-        if len(frame_paths) != len(delays):
-            logger.warning("帧路径列表和延迟列表长度不一致")
-            return jsonify({"error": "帧路径列表和延迟列表长度必须一致"}), 400
+        # 检查图片列表和延迟列表长度是否一致
+        if len(frame_images_base64) != len(delays):
+            logger.warning("帧图片列表和延迟列表长度不一致")
+            return jsonify({"error": "帧图片列表和延迟列表长度必须一致"}), 400
         
         # 检查是否有帧
-        if len(frame_paths) == 0:
+        if len(frame_images_base64) == 0:
             logger.warning("没有提供帧")
             return jsonify({"error": "至少需要一个帧"}), 400
         
-        # 检查所有路径是否存在
-        for path in frame_paths:
-            if not os.path.exists(path):
-                logger.warning(f"帧路径不存在: {path}")
-                return jsonify({"error": f"帧路径不存在: {path}"}), 400
-        
-        # 读取所有图片
+        # 从Base64解码并创建图像对象
         frames = []
-        for path in frame_paths:
+        for i, img_base64 in enumerate(frame_images_base64):
             try:
-                img = Image.open(path)
+                logger.info(f"解码第 {i + 1}/{len(frame_images_base64)} 帧")
+                # 解码Base64字符串
+                if ',' in img_base64:  # 处理可能的Data URL格式 (如 data:image/png;base64,...)  
+                    img_base64 = img_base64.split(',', 1)[1]
+                
+                img_data = base64.b64decode(img_base64)
+                img_buffer = BytesIO(img_data)
+                img = Image.open(img_buffer)
                 frames.append(img.copy())
             except Exception as e:
-                logger.error(f"读取图片失败: {path}, 错误: {str(e)}")
-                return jsonify({"error": f"读取图片失败: {path}"}), 500
+                logger.error(f"解码图片失败: 第{i+1}帧, 错误: {str(e)}")
+                return jsonify({"error": f"解码图片失败: 第{i+1}帧"}), 500
         
         # 创建临时文件用于保存WebP动画
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -209,9 +206,21 @@ def create_webp_animation() -> Tuple[Dict[str, Any], int]:
         
         logger.info(f"已创建WebP动画: {output_path}, 共{len(frames)}帧")
         
-        # 返回WebP文件路径
+        # 将WebP文件转换为Base64编码并返回
+        with open(output_path, 'rb') as webp_file:
+            webp_data = webp_file.read()
+            webp_base64 = base64.b64encode(webp_data).decode('utf-8')
+            
+        # 删除临时文件
+        try:
+            os.remove(output_path)
+            logger.info(f"已删除临时WebP文件: {output_path}")
+        except Exception as e:
+            logger.warning(f"删除临时WebP文件失败: {output_path}, 错误: {str(e)}")
+            
+        # 返回Base64编码的WebP数据
         return jsonify({
-            "webpPath": output_path
+            "webpBase64": webp_base64
         })
         
     except Exception as e:
