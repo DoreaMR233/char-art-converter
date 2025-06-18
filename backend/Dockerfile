@@ -18,8 +18,8 @@ RUN mvn package -DskipTests
 # 运行阶段
 FROM openjdk:11-jre-slim
 
-# 安装netcat用于检查Redis连接
-RUN apt-get update && apt-get install -y netcat && rm -rf /var/lib/apt/lists/*
+# 安装netcat用于检查Redis连接以及字体相关依赖
+RUN apt-get update && apt-get install -y netcat fontconfig libfreetype6 && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app
