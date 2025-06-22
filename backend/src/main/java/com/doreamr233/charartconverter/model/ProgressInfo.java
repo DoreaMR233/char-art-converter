@@ -26,7 +26,7 @@ public class ProgressInfo {
     /**
      * 完成百分比，范围0-100
      */
-    private int percentage;
+    private double percentage;
     
     /**
      * 进度消息，描述当前处理状态
@@ -52,11 +52,11 @@ public class ProgressInfo {
      * 总像素数，用于计算处理进度
      */
     private int totalPixels;
-    
+
     /**
-     * 进度条状态值，用于前端显示进度条
+     * 项目是否完成
      */
-    private int count;
+    private boolean isDone;
 
     /**
      * 创建基本进度信息的构造函数
@@ -69,7 +69,7 @@ public class ProgressInfo {
      * @param percentage 完成百分比
      * @param message 进度消息
      */
-    public ProgressInfo(String id, int percentage, String message) {
+    public ProgressInfo(String id, double percentage, String message) {
         this.id = id;
         this.percentage = percentage;
         this.message = message;
@@ -77,7 +77,7 @@ public class ProgressInfo {
         this.stage = "初始化";
         this.currentPixel = 0;
         this.totalPixels = 0;
-        this.count = -1;
+        this.isDone = false;
     }
     
     /**
@@ -94,7 +94,7 @@ public class ProgressInfo {
      * @param currentPixel 当前处理的像素索引
      * @param totalPixels 总像素数
      */
-    public ProgressInfo(String id, int percentage, String message, String stage, int currentPixel, int totalPixels) {
+    public ProgressInfo(String id, double percentage, String message, String stage, int currentPixel, int totalPixels,boolean isDone) {
         this.id = id;
         this.percentage = percentage;
         this.message = message;
@@ -102,6 +102,6 @@ public class ProgressInfo {
         this.stage = stage;
         this.currentPixel = currentPixel;
         this.totalPixels = totalPixels;
-        this.count = -1;
+        this.isDone = isDone;
     }
 }
