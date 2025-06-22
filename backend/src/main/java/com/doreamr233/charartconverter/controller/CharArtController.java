@@ -7,15 +7,21 @@ import com.doreamr233.charartconverter.model.ProgressInfo;
 import com.doreamr233.charartconverter.service.CharArtService;
 import com.doreamr233.charartconverter.service.ProgressService;
 import com.doreamr233.charartconverter.util.WebpProcessorClient;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.AsyncContext;
+import javax.servlet.AsyncEvent;
+import javax.servlet.AsyncListener;
+import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,9 +93,8 @@ public class CharArtController {
      * @param progressIdParam 进度ID，用于跟踪转换进度，如果不提供则自动生成
      * @return 包含转换后图片数据的HTTP响应
      */
-    
     @PostMapping("/convert")
-    public ResponseEntity<byte[]> convertImage(
+    public ResponseEntity<Map<String, String>> convertImage(
             @RequestParam("image") MultipartFile imageFile,
             @RequestParam(value = "density", defaultValue = defaultDensity) String density,
             @RequestParam(value = "colorMode", defaultValue = defaultColorMode) String colorMode,
@@ -97,6 +102,7 @@ public class CharArtController {
             @RequestParam(value = "progressId", required = false) String progressIdParam) {
         
         Path tempFile = null;
+        Path resultFile = null;
         try {
             String originalFilename = imageFile.getOriginalFilename();
             log.info("接收到图片转换请求: {}, 密度: {}, 颜色模式: {}, 限制尺寸: {}", 
@@ -165,39 +171,60 @@ public class CharArtController {
                 throw new ServiceException("读取临时文件失败: " + e.getMessage(), e);
             }
             
-            // 设置响应头
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.IMAGE_PNG); // 默认为PNG
+            // 确定文件类型
+            String contentType = "image/png"; // 默认为PNG
+            String resultExtension = ".png"; // 默认扩展名
             
-            // 根据文件扩展名设置适当的Content-Type
+            // 根据文件扩展名设置适当的Content-Type和扩展名
             if (fileExtension != null && !fileExtension.isEmpty()) {
                 switch (fileExtension.toLowerCase()) {
                     case ".jpg":
                     case ".jpeg":
-                        headers.setContentType(MediaType.IMAGE_JPEG);
+                        contentType = "image/jpeg";
+                        resultExtension = ".jpg";
                         break;
                     case ".png":
-                        headers.setContentType(MediaType.IMAGE_PNG);
+                        contentType = "image/png";
+                        resultExtension = ".png";
                         break;
                     case ".gif":
-                        headers.setContentType(MediaType.IMAGE_GIF);
+                        contentType = "image/gif";
+                        resultExtension = ".gif";
                         break;
                     case ".webp":
-                        headers.setContentType(MediaType.valueOf("image/webp"));
+                        contentType = "image/webp";
+                        resultExtension = ".webp";
                         break;
                 }
             }
             
-            // 如果是GIF或动态WEBP，覆盖设置为对应的内容类型
+            // 如果是GIF或动态WEBP，覆盖设置为对应的内容类型和扩展名
             if (isGif) {
-                headers.setContentType(MediaType.IMAGE_GIF);
+                contentType = "image/gif";
+                resultExtension = ".gif";
             } else if (isWebp && isAnimated) {
-                headers.setContentType(MediaType.valueOf("image/webp"));
+                contentType = "image/webp";
+                resultExtension = ".webp";
             }
 
+            // 将结果保存到临时文件
+            String resultFileName = "result_" + progressId + resultExtension;
+            String tempDir = System.getProperty("java.io.tmpdir");
+            resultFile = Path.of(tempDir, resultFileName);
+            Files.write(resultFile, result);
+            
+            // 构建相对路径（相对于临时目录）
+            String relativePath = resultFile.getFileName().toString();
+            log.info("已保存结果到临时文件: {}", relativePath);
+            
+            // 返回文件路径和内容类型
+            Map<String, String> response = new HashMap<>();
+            response.put("filePath", relativePath);
+            response.put("contentType", contentType);
+            
             return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(result);
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(response);
             
         } catch (Exception e) {
             // 异常已由全局异常处理器处理，这里只需记录日志
@@ -232,7 +259,8 @@ public class CharArtController {
      * @return 包含查找结果和字符画文本的HTTP响应
      */
     @GetMapping("/text")
-    public ResponseEntity<Map<String,Object>> getCharText(@RequestParam("filename") String filename) throws Exception {
+    public ResponseEntity<Map<String,Object>> getCharText(
+            @RequestParam("filename") String filename) throws Exception {
         log.info("接收到获取字符画文本请求: {}", filename);
         Map<String,Object> result = charArtService.getCharText(filename);
         return ResponseEntity.ok()
@@ -260,7 +288,8 @@ public class CharArtController {
      * @return SSE发射器，用于向客户端推送事件
      */
     @GetMapping(value = "/progress/{id}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter getProgress(@PathVariable String id) {
+    public SseEmitter getProgress(
+            @PathVariable String id) {
         log.info("收到进度请求: {}", id);
         
         // 创建一个5分钟超时的SSE发射器
@@ -283,6 +312,7 @@ public class CharArtController {
 
                 long lastHeartbeat = System.currentTimeMillis();
                 long lastProgressInfoTimestamp = System.currentTimeMillis();
+                int heartbeatCount = 0; // 心跳计数器
 
                 while (true) {
                     ProgressInfo progressInfo = progressService.getProgress(id);
@@ -295,30 +325,38 @@ public class CharArtController {
                         // 发送进度更新
                         emitter.send(SseEmitter.event().name("progress").data(progressInfo, MediaType.APPLICATION_JSON));
                         lastProgressInfoTimestamp = progressInfo.getTimestamp();
+                        heartbeatCount = 0; // 收到进度更新时重置心跳计数
 
-                        if (progressInfo.getPercentage() >= 100) {
+                        // 如果进度达到100%且isDone为true，发送close事件并关闭连接
+                        if (progressInfo.getPercentage() >= 100 && progressInfo.isDone()) {
+                            log.info("进度完成，发送关闭事件: {}", id);
+                            emitter.send(SseEmitter.event().name("close").data("连接关闭中", MediaType.TEXT_PLAIN));
                             emitter.complete();
                             break;
                         }
                     } else {
-                        // 如果没有有效进度信息，发送默认进度
-                        if (now - lastProgressInfoTimestamp > 5000) { // 5秒没有进度更新就发送上一条消息
-                            log.info(progressInfo.toString());
-                            emitter.send(SseEmitter.event().name("progress").data(progressInfo, MediaType.APPLICATION_JSON));
-                            lastProgressInfoTimestamp = progressInfo.getTimestamp();
+                        // 如果没有有效进度信息，则定期发送心跳消息保持连接
+                        if (now - lastHeartbeat > 10000) { // 10秒发送一次心跳
+                            heartbeatCount++; // 增加心跳计数
+                            log.debug("发送心跳 #{}: {}", heartbeatCount, id);
+                            emitter.send(SseEmitter.event().name("heartbeat").data("ping", MediaType.TEXT_PLAIN));
+                            lastHeartbeat = now;
+                            
+                            // 如果心跳计数达到12次（约2分钟），发送关闭事件
+                            if (heartbeatCount >= 12) {
+                                log.info("心跳计数达到12次，发送关闭事件: {}", id);
+                                emitter.send(SseEmitter.event().name("close").data("连接关闭中", MediaType.TEXT_PLAIN));
+                                emitter.complete();
+                                break;
+                            }
                         }
                     }
 
-                    // 定期发送心跳消息保持连接
-                    if (now - lastHeartbeat > 10000) { // 10秒发送一次心跳
-                        emitter.send(SseEmitter.event().name("heartbeat").data("ping", MediaType.TEXT_PLAIN));
-                        lastHeartbeat = now;
-                    }
                     Thread.sleep(500);
                 }
             } catch (Exception e) {
-            log.error("处理SSE连接时出错: {}, 错误: {}", id, e.getMessage());
-            emitter.completeWithError(e);
+                log.error("处理SSE连接时出错: {}, 错误: {}", id, e.getMessage());
+                emitter.completeWithError(e);
             } finally {
                 executor.shutdown();
             }
@@ -326,7 +364,77 @@ public class CharArtController {
         
         return emitter;
     }
-
+     
+    /**
+     * 关闭进度连接
+     * <p>
+     * 主动关闭指定ID的进度连接，发送关闭事件并清理相关资源。
+     * 返回的Map包含两个字段：
+     * - success: 布尔值，表示是否成功关闭连接
+     * - message: 字符串，操作结果描述
+     * </p>
+     *
+     * @param id 进度ID，用于标识要关闭的特定连接
+     * @return 包含操作结果的HTTP响应
+     */
+    @PostMapping("/progress/{id}/close")
+    public ResponseEntity<Map<String, Object>> closeProgress(
+            @PathVariable String id) {
+        log.info("接收到关闭进度连接请求: {}", id);
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            progressService.sendCloseEvent(id);
+            result.put("success", true);
+            result.put("message", "进度连接已关闭");
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("关闭进度连接失败: {}, 错误: {}", id, e.getMessage());
+            result.put("success", false);
+            result.put("message", "关闭进度连接失败: " + e.getMessage());
+            return ResponseEntity.ok(result);
+        }
+    }
+    
+    /**
+     * 获取WebP处理器的进度流URL
+     * <p>
+     * 返回WebP处理器服务的SSE进度流URL，前端可以直接连接此URL获取实时进度更新。
+     * 返回的Map包含两个字段：
+     * - success: 布尔值，表示是否成功获取URL
+     * - url: 字符串，成功时为进度流URL，失败时为空字符串
+     * </p>
+     *
+     * @param taskId 任务ID，用于标识要跟踪的特定WebP处理任务
+     * @return 包含进度流URL的HTTP响应
+     */
+    @GetMapping("/webp-progress-url/{taskId}")
+    public ResponseEntity<Map<String, Object>> getWebpProgressUrl(
+            @PathVariable String taskId) {
+        log.info("接收到获取WebP进度流URL请求: {}", taskId);
+        Map<String, Object> result = new HashMap<>();
+        
+        if (!isWebpProcessorEnabled) {
+            result.put("success", false);
+            result.put("url", "");
+            result.put("message", "WebP处理服务未启用");
+            return ResponseEntity.ok(result);
+        }
+        
+        try {
+            String progressUrl = webpProcessorClient.getProgressStreamUrl(taskId);
+            result.put("success", true);
+            result.put("url", progressUrl);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("获取WebP进度流URL失败", e);
+            result.put("success", false);
+            result.put("url", "");
+            result.put("message", "获取进度流URL失败: " + e.getMessage());
+            return ResponseEntity.ok(result);
+        }
+    }
+    
     /**
      * 健康检查端点
      * <p>
@@ -365,8 +473,123 @@ public class CharArtController {
         }
         return response;
     }
-
-
-
+    
+    /**
+     * 从临时文件夹获取图片数据
+     * <p>
+     * 根据提供的文件路径，从系统临时目录中读取图片文件并返回。
+     * 该接口主要供Python WebP处理器调用，用于获取Java端生成的临时图片文件。
+     * 成功返回图片数据后，不会删除原文件，由调用方负责文件的管理。
+     * </p>
+     *
+     * @param filePath 临时文件的路径（相对于系统临时目录的路径）
+     * @return 包含图片数据的HTTP响应
+     */
+    @GetMapping("/get-temp-image/{filePath:.+}")
+    public ResponseEntity<byte[]> getTempImage(
+            @PathVariable String filePath, HttpServletRequest request) {
+        log.info("接收到获取临时图片请求: {}", filePath);
+        
+        try {
+            // URL解码文件路径
+            String decodedFilePath = java.net.URLDecoder.decode(filePath, "UTF-8");
+            log.info("解码后的文件路径: {}", decodedFilePath);
+            
+            // 构建完整的文件路径（基于系统临时目录）
+            String tempDir = System.getProperty("java.io.tmpdir");
+            final Path fullPath = Path.of(tempDir, decodedFilePath);
+            
+            // 检查文件是否存在
+            if (!Files.exists(fullPath)) {
+                log.warn("请求的临时文件不存在: {}", fullPath);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // 检查文件是否是图片
+            String fileName = fullPath.getFileName().toString().toLowerCase();
+            if (!fileName.endsWith(".png") && !fileName.endsWith(".jpg") && 
+                !fileName.endsWith(".jpeg") && !fileName.endsWith(".gif") && 
+                !fileName.endsWith(".bmp") && !fileName.endsWith(".webp")) {
+                log.warn("请求的文件不是支持的图片格式: {}", fullPath);
+                return ResponseEntity.badRequest().body("不支持的图片格式".getBytes());
+            }
+            
+            // 读取文件内容
+            byte[] imageData = Files.readAllBytes(fullPath);
+            
+            // 设置适当的Content-Type
+            String contentType = "image/jpeg"; // 默认
+            if (fileName.endsWith(".png")) {
+                contentType = "image/png";
+            } else if (fileName.endsWith(".gif")) {
+                contentType = "image/gif";
+            } else if (fileName.endsWith(".bmp")) {
+                contentType = "image/bmp";
+            } else if (fileName.endsWith(".webp")) {
+                contentType = "image/webp";
+            }
+            
+            log.info("成功获取临时图片: {}, 大小: {} 字节", fullPath, imageData.length);
+            
+            // 启用异步处理，以便在响应完成后执行清理操作
+            AsyncContext asyncContext = request.startAsync();
+            asyncContext.addListener(new AsyncListener() {
+                @Override
+                public void onComplete(AsyncEvent event) {
+                    try {
+                        if (Files.exists(fullPath)) {
+                            // 获取文件所在的目录路径
+                            Path dirPath = fullPath.getParent();
+                            // 删除文件
+                            Files.delete(fullPath);
+                            log.info("文件已成功传输并删除: {}", fullPath);
+                            
+                            // 检查目录是否为空，如果为空则删除
+                            if (Files.exists(dirPath) && Files.list(dirPath).findAny().isEmpty()) {
+                                Files.delete(dirPath);
+                                log.info("空文件夹已删除: {}", dirPath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("删除文件或文件夹时出错: {}", e.getMessage());
+                    }
+                }
+                
+                @Override
+                public void onTimeout(AsyncEvent event) {
+                    // 不需要实现
+                }
+                
+                @Override
+                public void onError(AsyncEvent event) {
+                    // 不需要实现
+                }
+                
+                @Override
+                public void onStartAsync(AsyncEvent event) {
+                    // 不需要实现
+                }
+            });
+            
+            // 设置异步请求超时时间
+            asyncContext.setTimeout(600000);
+            
+            // 返回图片数据
+            ResponseEntity<byte[]> responseEntity = ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .contentLength(imageData.length)
+                    .body(imageData);
+            
+            // 完成异步处理
+            asyncContext.complete();
+            
+            return responseEntity;
+            
+        } catch (Exception e) {
+            log.error("获取临时图片失败", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(("获取临时图片失败: " + e.getMessage()).getBytes());
+        }
+    }
 
 }
