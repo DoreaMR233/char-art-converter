@@ -34,7 +34,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins("http://localhost:5173") // 前端开发服务器地址
+                .allowedOrigins("*") // 前端开发服务器地址
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(false) // 修改为false，与前端EventSource保持一致
@@ -57,7 +57,7 @@ public class WebConfig implements WebMvcConfigurer {
         CorsConfiguration config = new CorsConfiguration();
         
         // 允许的源
-        config.addAllowedOrigin("http://localhost:5173");
+        config.addAllowedOrigin("*");
         
         // 允许的HTTP方法
         config.addAllowedMethod("*");
