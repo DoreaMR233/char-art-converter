@@ -7,10 +7,10 @@ import com.doreamr233.charartconverter.service.ProgressService;
 import com.doreamr233.charartconverter.util.CharArtProcessor;
 import com.doreamr233.charartconverter.util.WebpProcessorClient;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,19 +35,19 @@ public class CharArtServiceImpl implements CharArtService {
     /**
      * 进度服务，用于更新和报告转换进度
      */
-    @Autowired
+    @Resource
     private ProgressService progressService;
     
     /**
      * Redis模板，用于缓存字符画文本结果
      */
-    @Autowired
+    @Resource
     private RedisTemplate<String, String> redisTemplate;
     
     /**
      * WebP处理客户端，用于处理WebP动图
      */
-    @Autowired
+    @Resource
     private WebpProcessorClient webpProcessorClient;
 
 
@@ -82,7 +82,7 @@ public class CharArtServiceImpl implements CharArtService {
             if (isWebp) {
                 // 从文件名中提取扩展名
                 String extension = "webp"; // 默认扩展名
-                if (filename != null && filename.contains(".")) {
+                if (filename.contains(".")) {
                     extension = filename.substring(filename.lastIndexOf(".") + 1);
                 }
                 
@@ -100,7 +100,7 @@ public class CharArtServiceImpl implements CharArtService {
             }
             
             // 更新进度
-            progressService.updateProgress(progressId, 5, "开始处理图片...", "初始化", 0, 0);
+            progressService.updateProgress(progressId, 30, "已收到图片，准备开始转换", "接收", 0, 0,false);
             
             // 读取输入流到字节数组
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -141,10 +141,9 @@ public class CharArtServiceImpl implements CharArtService {
      * 
      * @param filename 原始文件名，用于构建缓存键
      * @return 包含查找状态和字符文本的Map，格式为{"find":boolean, "text":String}
-     * @throws Exception 当获取过程中发生错误时抛出
      */
     @Override
-    public Map<String,Object> getCharText(String filename) throws Exception {
+    public Map<String,Object> getCharText(String filename) {
         Map<String,Object> result = new HashMap<>();
         // 从Redis缓存获取字符画文本
         String cacheKey = RedisConfig.CACHE_KEY_PREFIX + filename;
@@ -155,13 +154,12 @@ public class CharArtServiceImpl implements CharArtService {
             // 返回JSON格式，find=true表示找到了字符画文本
             result.put("find",true);
             result.put("text",cachedText);
-            return result;
         } else {
             log.debug("Redis缓存中未找到字符画文本: {}", filename);
             // 返回JSON格式，find=false表示未找到字符画文本
             result.put("find",false);
             result.put("text","");
-            return result;
         }
+        return result;
     }
 }
