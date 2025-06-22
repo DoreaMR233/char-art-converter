@@ -1,0 +1,57 @@
+# 版本控制系统
+.git
+.gitignore
+.gitattributes
+
+# IDE和编辑器文件
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Java相关
+*.class
+hs_err_pid*
+
+# Maven构建目录和文件 - 不排除，因为Dockerfile中使用了多阶段构建
+# target/
+# pom.xml.tag
+# pom.xml.releaseBackup
+# pom.xml.versionsBackup
+# pom.xml.next
+# release.properties
+# dependency-reduced-pom.xml
+# buildNumber.properties
+# .mvn/timing.properties
+
+# 日志文件 - 这些会在容器中生成
+*.log
+logs/
+
+# 临时文件
+*.tmp
+temp/
+
+# 文档和其他非必要文件
+README.md
+LICENSE
+DOCKER.md
+img/
+
+# 不排除这些文件，因为它们在Dockerfile中被使用
+!src/main/resources/application.properties
+!docker-entrypoint.sh
