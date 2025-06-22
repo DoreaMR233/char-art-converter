@@ -1,37 +1,43 @@
 /**
- * API模块 - 处理与后端服务器的所有通信
- * 包含图片转换、文本获取和进度监控的API调用
+ * API通信模块
+ * 封装与后端服务器的所有HTTP请求和SSE连接
+ * 包含图片转换、文本获取、进度监控和健康检查等功能
  */
 import axios from 'axios'
 
-// 从环境变量获取API配置
-const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || '/api'
+// 从环境变量读取API路径配置
+const basePath = import.meta.env.VITE_BASE_PATH || '';
+const apiBasePath = import.meta.env.VITE_API_BASE_PATH || '/api';
+// 根据环境变量构建完整的API基础路径
+const apiFullBasePath = basePath === '' ? apiBasePath : `/${basePath}${apiBasePath}`;
+console.log(`完整API基础路径:${apiFullBasePath}`)
 
 /**
- * 创建axios实例，配置基本参数
- * @constant {Object} api - 配置好的axios实例
+ * 创建配置好的axios HTTP客户端实例
+ * @type {AxiosInstance} 预配置的axios实例
  */
 const api = axios.create({
-  baseURL: API_BASE_PATH,
-  timeout: 60000, // 较长的超时时间，因为图片处理可能需要时间
+  baseURL: apiFullBasePath,
+  timeout: 600000, // 10分钟超时时间，适配大文件处理需求
 })
 
 /**
- * 请求拦截器 - 在请求发送前处理请求配置
+ * HTTP请求拦截器
+ * 在请求发送前对请求配置进行预处理
  */
 api.interceptors.request.use(
   /**
-   * 请求成功拦截函数
-   * @param {Object} config - 请求配置对象
-   * @returns {Object} 处理后的请求配置
+   * 请求成功拦截处理函数
+   * @param {AxiosRequestConfig} config - axios请求配置对象
+   * @returns {AxiosRequestConfig} 处理后的请求配置
    */
   config => {
     return config
   },
   /**
-   * 请求错误拦截函数
-   * @param {Error} error - 请求错误对象
-   * @returns {Promise} 返回带有错误信息的Promise
+   * 请求错误拦截处理函数
+   * @param {Error} error - 请求阶段发生的错误
+   * @returns {Promise<never>} 拒绝状态的Promise
    */
   error => {
     return Promise.reject(error)
@@ -39,37 +45,39 @@ api.interceptors.request.use(
 )
 
 /**
- * 响应拦截器 - 在收到响应后处理响应数据
+ * HTTP响应拦截器
+ * 在收到响应后对响应数据进行统一处理，特别处理Blob类型的错误响应
  */
 api.interceptors.response.use(
   /**
-   * 响应成功拦截函数
-   * @param {Object} response - 响应对象
-   * @returns {Object} 处理后的响应对象
+   * 响应成功拦截处理函数
+   * @param {AxiosResponse} response - axios响应对象
+   * @returns {AxiosResponse} 处理后的响应对象
    */
   response => {
     return response
   },
   /**
-   * 响应错误拦截函数
-   * @param {Error} error - 响应错误对象
-   * @returns {Promise} 返回带有错误信息的Promise
+   * 响应错误拦截处理函数
+   * 特别处理Blob格式的错误响应，将其转换为可读的JSON格式
+   * @param {AxiosError} error - axios响应错误对象
+   * @returns {Promise<never>} 拒绝状态的Promise
    */
   async error => {
-    // 检查响应数据是否为Blob类型
+    // 检查响应数据是否为JSON格式的Blob类型
     if (error.response && error.response.data instanceof Blob && 
         error.response.data.type === 'application/json') {
-      // 将Blob转换为文本
+      // 将Blob格式的错误响应转换为可读的JSON对象
       try {
         const jsonText = await error.response.data.text();
-        // 解析JSON文本
+        // 解析JSON文本为对象
         const errorData = JSON.parse(jsonText);
-        // 更新错误对象中的数据
+        // 更新错误对象中的响应数据
         error.response.data = errorData;
         console.error('API请求错误:', errorData);
       } catch (e) {
-        console.error('解析错误响应失败:', e);
-        console.error('原始API请求错误:', error.response.data);
+        console.error('解析Blob错误响应失败:', e);
+        console.error('原始错误响应数据:', error.response.data);
       }
     } else {
       console.error('API请求错误:', error.response ? error.response.data : error.message);
@@ -79,25 +87,25 @@ api.interceptors.response.use(
 )
 
 /**
- * API方法
+ * API接口方法定义
  */
 
 /**
- * 将图片转换为字符画
- * @function convertImage
- * @param {FormData} formData - 包含图片文件和转换参数的表单数据
- *   @param {File} formData.image - 要转换的图片文件
- *   @param {string} formData.density - 字符密度 ('low', 'medium', 'high')
- *   @param {string} formData.colorMode - 颜色模式 ('color', 'grayscale')
- *   @param {boolean} formData.limitSize - 是否限制输出尺寸
- *   @param {string} formData.progressId - 进度追踪ID
- * @param {Function} onProgress - 上传进度回调函数，接收百分比参数
- * @returns {Promise<Object>} 返回包含字符画图片的响应对象，数据为Blob格式
+ * 图片转字符画接口
+ * 上传图片文件并根据指定参数转换为字符画
+ * @param {FormData} formData - 包含图片和转换参数的表单数据
+ *   @param {File} formData.image - 待转换的图片文件
+ *   @param {string} formData.density - 字符密度等级 ('low'|'medium'|'high')
+ *   @param {string} formData.colorMode - 颜色模式 ('color'|'grayscale')
+ *   @param {boolean} formData.limitSize - 是否限制输出图片尺寸
+ *   @param {string} formData.progressId - 用于进度跟踪的唯一标识符
+ * @param {Function} [onProgress] - 文件上传进度回调函数
+ *   @param {number} onProgress.percentage - 上传进度百分比(0-100)
+ * @returns {Promise<AxiosResponse>} 包含转换结果信息的响应对象
  */
 export const convertImage = (formData, onProgress) => {
   return api.post('/convert', formData, {
     timeout: 600000, // 10分钟超时
-    responseType: 'blob',
     headers: {
       'Content-Type': 'multipart/form-data'
     },
@@ -110,13 +118,29 @@ export const convertImage = (formData, onProgress) => {
   })
 }
 
+/**
+ * 获取临时图片文件接口
+ * 根据文件路径获取服务器上的临时图片文件
+ * @param {string} filePath - 临时图片文件的相对路径
+ * @param {string} contentType - 图片的内容类型
+ * @returns {Promise<AxiosResponse>} 包含图片Blob数据的响应对象
+ */
+export const getTempImage = (filePath, contentType) => {
+  return api.get(`/get-temp-image/${filePath}`, {
+    responseType: 'blob',
+    headers: {
+      'Accept': contentType || 'image/*'
+    }
+  })
+}
+
 
 
 /**
- * 获取字符画的文本内容
- * @function getCharText
- * @param {string} filename - 原始图片的文件名，用于在服务器上查找对应的字符画文本
- * @returns {Promise<Object>} 返回包含字符画文本的响应对象
+ * 获取字符画文本内容接口
+ * 根据文件路径获取字符画的纯文本内容
+ * @param {string} filePath - 字符画文本文件的相对路径
+ * @returns {Promise<AxiosResponse>} 包含字符画文本内容的响应对象
  *   @returns {boolean} response.data.find - 是否找到字符画文本
  *   @returns {string} response.data.text - 字符画文本内容（如果找到）
  */
@@ -127,20 +151,22 @@ export const getCharText = (filename) => {
 }
 
 /**
- * 订阅服务器发送事件(SSE)获取处理进度
- * @function subscribeToProgress
- * @param {string} id - 进度追踪ID，与转换请求中的progressId对应
- * @param {Function} onMessage - 消息处理回调函数，接收进度数据对象
- *   @param {number} data.percentage - 处理进度百分比
- *   @param {string} data.stage - 当前处理阶段
- *   @param {string} data.message - 进度消息
- *   @param {number} data.currentPixel - 当前处理的像素数
- *   @param {number} data.totalPixels - 总像素数
- *   @param {string} data.connectionStatus - 连接状态 ('connecting', 'reconnecting', 'failed', 'error')
- * @returns {EventSource} 返回创建的EventSource实例，可用于关闭连接
+ * 订阅转换进度接口
+ * 通过Server-Sent Events(SSE)实时获取图片转换进度
+ * @param {string} progressId - 用于进度跟踪的唯一标识符
+ * @param {Function} onProgress - 进度更新回调函数
+ *   @param {Object} onProgress.data - 进度数据对象
+ *   @param {number} onProgress.data.progress - 当前进度百分比(0-100)
+ *   @param {string} onProgress.data.stage - 当前处理阶段描述
+ *   @param {string} onProgress.data.message - 进度消息
+ * @param {Function} onError - 错误处理回调函数
+ *   @param {Error} onError.error - 错误对象
+ * @param {Function} onComplete - 转换完成回调函数
+ *   @param {Object} onComplete.data - 完成数据对象
+ * @returns {Function} 取消订阅的清理函数
  */
 export const subscribeToProgress = (id, onMessage) => {
-  let eventSource = new EventSource(`/api/progress/${id}`)
+  let eventSource = new EventSource(`${API_BASE_PATH}/progress/${id}`)
   
   /**
    * 连接打开时的处理
@@ -167,6 +193,28 @@ export const subscribeToProgress = (id, onMessage) => {
    */
   eventSource.addEventListener("init",(event) => {
     console.log('已接收到后端消息：',event.data)
+  })
+  
+  /**
+   * 处理关闭消息 - 接收服务器发送的关闭连接指令
+   * @event close
+   * @param {Event} event - 事件对象，包含关闭消息
+   */
+  eventSource.addEventListener("close",(event) => {
+    console.log('收到关闭连接消息:', event.data)
+    if (eventSource && eventSource.readyState !== 2) { // 如果连接未关闭
+      console.log('关闭EventSource连接')
+      eventSource.close()
+      
+      // 通知UI连接已关闭
+      onMessage({
+        connectionStatus: 'closed',
+        stage: '错误',
+        message: '由于服务器长时间为响应，已关闭消息通知连接',
+        percentage: 100,
+        done: true
+      })
+    }
   })
   /**
    * 处理进度消息 - 接收处理进度更新
@@ -198,7 +246,7 @@ export const subscribeToProgress = (id, onMessage) => {
         onMessage(data)
         
         // 如果进度达到100%，关闭连接
-        if (data.percentage >= 100) {
+        if (data.done) {
           console.log('进度完成，关闭EventSource')
           eventSource.close()
         }
@@ -278,14 +326,38 @@ export const subscribeToProgress = (id, onMessage) => {
 }
 
 /**
- * 检查后端服务健康状态
- * @function checkHealth
- * @returns {Promise<Object>} 返回包含服务健康状态的响应对象
+ * 后端服务健康检查接口
+ * 检查后端API服务是否正常运行
+ * @returns {Promise<AxiosResponse>} 包含服务状态信息的响应对象
  *   @returns {string} response.data.status - 服务状态，正常时为"UP"
  *   @returns {string} response.data.message - 状态描述信息
  */
 export const checkHealth = () => {
   return api.get('/health')
+}
+
+/**
+ * 获取WebP处理器进度流URL接口
+ * 获取用于监听WebP动画处理进度的SSE流地址
+ * @param {string} taskId - WebP处理任务的唯一标识符
+ * @returns {Promise<AxiosResponse>} 包含进度流URL的响应对象
+ *   @returns {boolean} response.data.success - 请求是否成功
+ *   @returns {string} response.data.url - WebP处理器的进度流URL
+ */
+export const getWebpProgressUrl = (taskId) => {
+  return api.get(`/webp-progress-url/${taskId}`)
+}
+
+/**
+ * 关闭进度连接接口
+ * 主动关闭指定的SSE进度监听连接
+ * @param {string} progressId - 用于进度跟踪的唯一标识符
+ * @returns {Promise<AxiosResponse>} 包含关闭操作结果的响应对象
+ *   @returns {boolean} response.data.success - 是否成功关闭连接
+ *   @returns {string} response.data.message - 操作结果描述
+ */
+export const closeProgressConnection = (id) => {
+  return api.post(`/progress/${id}/close`)
 }
 
 /**
