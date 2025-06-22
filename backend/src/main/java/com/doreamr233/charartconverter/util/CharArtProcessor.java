@@ -1,12 +1,12 @@
 package com.doreamr233.charartconverter.util;
 
 import com.doreamr233.charartconverter.exception.ServiceException;
+import com.doreamr233.charartconverter.model.WebpProcessResult;
 import com.doreamr233.charartconverter.service.ProgressService;
 import com.madgag.gif.fmsware.AnimatedGifEncoder;
 import com.madgag.gif.fmsware.GifDecoder;
 import lombok.extern.slf4j.Slf4j;
 import net.coobird.thumbnailator.Thumbnails;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import javax.imageio.ImageIO;
@@ -99,9 +99,6 @@ public class CharArtProcessor {
         List<Path> tempFiles = new ArrayList<>();
 
         try {
-            // 更新进度
-            progressService.updateProgress(progressId, 0, "开始处理图片", "初始化", 0, 1);
-
             // 将图像字节数组保存为临时文件
             // 尝试检测图像类型
             String imageType = detectImageType(imageBytes);
@@ -119,15 +116,17 @@ public class CharArtProcessor {
             int width = image.getWidth();
             int height = image.getHeight();
             int totalPixels = width * height;
+            int pregressStart = 40;
+            int pregressEnd = 60;
 
             // 更新进度
-            progressService.updateProgress(progressId, 10, "图片读取完成", "图像读取", 1, totalPixels);
+            progressService.updateProgress(progressId, 40, "图片读取完成", "图像读取", 1, totalPixels,false);
 
             // 获取密度级别
             int densityLevel = getDensityLevel(density);
 
             // 转换为字符文本
-            String charText = convertImageToCharText(image, densityLevel, limitSize, progressId, totalPixels, 0, 1, 1, 10, progressService);
+            String charText = convertImageToCharText(image, densityLevel, limitSize, progressId, totalPixels, 0, 1, 1, pregressStart,pregressEnd,"文本生成", progressService);
 
             // 将字符画文本存入Redis缓存
             if (redisTemplate != null && filename != null && !filename.isEmpty()) {
@@ -137,20 +136,23 @@ public class CharArtProcessor {
             }
 
             // 更新进度
-            progressService.updateProgress(progressId, 60, "字符画文本生成完成", "文本生成", totalPixels, totalPixels);
+            progressService.updateProgress(progressId, 60, "字符画文本生成完成", "文本生成", totalPixels, totalPixels,false);
+
+            pregressStart = 60;
+            pregressEnd = 80;
 
             // 生成字符画图片
-            Path charImagePath = createCharImageFile(charText, width, height, colorMode, image, progressId, 0, totalPixels, tempFiles, progressService);
+            Path charImagePath = createCharImageFile(charText, width, height, colorMode, image, progressId, 0, totalPixels, tempFiles, pregressStart, pregressEnd,"图像生成",progressService);
             tempFiles.add(charImagePath);
 
             // 更新进度
-            progressService.updateProgress(progressId, 90, "字符画图片生成完成", "图像生成", totalPixels, totalPixels);
+            progressService.updateProgress(progressId, 80, "字符画图片生成完成", "图像生成", totalPixels, totalPixels,false);
 
             // 读取生成的图片
             byte[] resultBytes = Files.readAllBytes(charImagePath);
 
             // 更新进度
-            progressService.updateProgress(progressId, 100, "处理完成", "完成", totalPixels, totalPixels);
+            progressService.updateProgress(progressId, 100, "处理完成", "完成", totalPixels, totalPixels,true);
 
             return resultBytes;
         } catch (IOException e) {
@@ -181,8 +183,6 @@ public class CharArtProcessor {
         List<Path> tempFiles = new ArrayList<>();
 
         try {
-            // 更新进度
-            progressService.updateProgress(progressId, 0, "开始处理GIF", "初始化", 0, 1);
 
             // 将图像字节数组保存为临时文件
             // 对于GIF处理，我们知道文件类型是gif
@@ -210,7 +210,7 @@ public class CharArtProcessor {
             }
 
             // 更新进度
-            progressService.updateProgress(progressId, 10, "GIF解码完成，共" + frameCount + "帧", "GIF解码", 1, 1);
+            progressService.updateProgress(progressId, 40, "GIF解码完成，共" + frameCount + "帧", "GIF解码", 1, 1,false);
 
             // 获取第一帧的尺寸
             BufferedImage firstFrame = gifDecoder.getFrame(0);
@@ -229,13 +229,14 @@ public class CharArtProcessor {
             tempFiles.add(outputGifPath);
             gifEncoder.start(outputGifPath.toString());
             gifEncoder.setRepeat(0); // 0表示无限循环
-
+            double pregressStart = 40;
+            double pregressEnd = 80;
+            double singlePregress = ((pregressEnd - pregressStart) / (double)frameCount);
             // 处理每一帧
             for (int i = 0; i < frameCount; i++) {
                 // 更新进度
-                int progress = 10 + (i * 80 / frameCount);
-                int currentFramePixels = width * height * i;
-                progressService.updateProgress(progressId, progress, "处理GIF第" + (i + 1) + "/" + frameCount + "帧", "帧处理", currentFramePixels, totalPixels);
+                pregressEnd = pregressStart + (singlePregress/3);
+                progressService.updateProgress(progressId, pregressEnd, "处理GIF第" + (i + 1) + "/" + frameCount + "帧", "帧处理", (i+1), frameCount,false);
 
                 // 获取当前帧
                 BufferedImage frame = gifDecoder.getFrame(i);
@@ -246,11 +247,19 @@ public class CharArtProcessor {
 
                 // 生成字符画文本（传递进度ID和像素信息）
                 int framePixelOffset = width * height * i;
-                String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, totalPixels, framePixelOffset, i + 1, frameCount, progress, progressService);
+                String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, totalPixels, framePixelOffset, i + 1, frameCount, pregressStart,pregressEnd,"文本生成：第"+(i + 1)+"帧/共"+frameCount+"帧", progressService);
+                progressService.updateProgress(progressId, pregressEnd, "第"+(i+1)+"帧字符画文本生成完成", "文本生成", totalPixels, totalPixels,false);
+
+                pregressStart = pregressEnd;
+                pregressEnd = pregressStart + (singlePregress/3);
 
                 // 生成字符画图片
-                Path charFramePath = createCharImageFile(frameText, width, height, colorMode, frame, progressId, framePixelOffset, totalPixels, tempFiles, i + 1, frameCount, progress, progressService);
+                Path charFramePath = createCharImageFile(frameText, width, height, colorMode, frame, progressId, framePixelOffset, totalPixels, tempFiles, i + 1, frameCount, pregressStart,pregressEnd ,"图像生成：第"+(i + 1)+"帧/共"+frameCount+"帧",progressService);
                 tempFiles.add(charFramePath);
+                progressService.updateProgress(progressId, pregressEnd, "第"+(i+1)+"帧符画图片生成完成", "图像生成", totalPixels, totalPixels,false);
+
+                pregressStart = pregressEnd;
+                pregressEnd = pregressStart + (singlePregress/3);
 
                 // 读取生成的字符画图片
                 BufferedImage charImage = ImageIO.read(charFramePath.toFile());
@@ -258,19 +267,21 @@ public class CharArtProcessor {
                 // 设置帧延迟并添加到GIF编码器
                 gifEncoder.setDelay(delays[i]);
                 gifEncoder.addFrame(charImage);
+                progressService.updateProgress(progressId, pregressEnd, "第"+(i+1)+"帧符画图片编码进GIF字符画动图完成", "GIF编码", totalPixels, totalPixels,false);
+
             }
 
             // 完成GIF编码
             gifEncoder.finish();
 
             // 更新进度
-            progressService.updateProgress(progressId, 90, "GIF编码完成", "GIF编码", totalPixels - 1, totalPixels);
+            progressService.updateProgress(progressId, 90, "GIF编码完成", "GIF编码", totalPixels - 1, totalPixels,false);
 
             // 读取生成的GIF文件
             byte[] resultBytes = Files.readAllBytes(outputGifPath);
 
             // 更新进度
-            progressService.updateProgress(progressId, 100, "处理完成", "完成", totalPixels, totalPixels);
+            progressService.updateProgress(progressId, 100, "处理完成", "完成", totalPixels, totalPixels,true);
 
             return resultBytes;
         } catch (IOException e) {
@@ -302,21 +313,17 @@ public class CharArtProcessor {
         List<Path> tempFiles = new ArrayList<>();
 
         try {
-            // 更新进度
-            progressService.updateProgress(progressId, 0, "开始处理WebP动画", "初始化", 0, 1);
-
             // 检查WebP处理服务是否可用
             if (!webpProcessorClient.isServiceAvailable()) {
                 throw new ServiceException("WebP处理服务不可用，请确保Python服务已启动");
             }
-
-            // 使用WebP处理服务解码WebP动画
-            WebpProcessorClient.WebpProcessResult webpResult = webpProcessorClient.processWebp(originalPath.toFile());
+            // 使用WebP处理服务解码WebP动画，传递任务ID用于进度跟踪
+            WebpProcessResult webpResult = webpProcessorClient.processWebp(originalPath.toFile(), progressId);
             int frameCount = webpResult.getFrameCount();
             BufferedImage[] frames = webpResult.getFrames();
             int[] delays = webpResult.getDelays();
 
-            progressService.updateProgress(progressId, 10, "WebP解码完成，共" + frameCount + "帧", "WebP解码", 1, 1);
+            progressService.updateProgress(progressId, 40, "WebP解码完成，共" + frameCount + "帧", "WebP解码", 1, 1,false);
 
             // 获取第一帧的尺寸
             BufferedImage firstFrame = frames[0];
@@ -329,35 +336,50 @@ public class CharArtProcessor {
             // 计算总像素数（所有帧）
             int totalPixels = width * height * frameCount;
 
-            // 存储每一帧的字符画图片
-            BufferedImage[] charFrames = new BufferedImage[frameCount];
+            // 存储每一帧的字符画图片路径
+            Path[] charFramePaths = new Path[frameCount];
 
+            double pregressStart = 40;
+            double pregressEnd = 80;
+            double singlePregress = ((pregressEnd - pregressStart) / (double)frameCount);
             for (int i = 0; i < frameCount; i++) {
                 // 更新进度
-                int progress = 10 + (i * 80 / frameCount);
-                int currentFramePixels = width * height * i;
-                progressService.updateProgress(progressId, progress, "处理WebP第" + (i + 1) + "/" + frameCount + "帧", "帧处理", currentFramePixels, totalPixels);
+                pregressEnd = pregressStart + (singlePregress/3);
+                progressService.updateProgress(progressId, pregressEnd, "处理WebP第" + (i + 1) + "/" + frameCount + "帧", "帧处理", (i+1), frameCount,false);
 
                 // 获取当前帧
                 BufferedImage frame = frames[i];
 
                 // 生成字符画图片（传递进度ID和像素信息）
                 int framePixelOffset = width * height * i;
-                String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, totalPixels, framePixelOffset, i + 1, frameCount, progress, progressService);
+                String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, totalPixels, framePixelOffset, i + 1, frameCount, pregressStart,pregressEnd,"文本生成：第"+(i + 1)+"帧/共"+frameCount+"帧", progressService);
+                progressService.updateProgress(progressId, pregressEnd, "第"+(i+1)+"帧字符画文本生成完成", "文本生成", totalPixels, totalPixels,false);
 
-                // 直接创建字符画图片对象，不保存为文件
-                charFrames[i] = createCharImage(frameText, width, height, colorMode, frame, progressId, framePixelOffset, totalPixels, i + 1, frameCount, progress, progressService);
+                pregressStart = pregressEnd;
+                pregressEnd = pregressStart + (singlePregress/3);
+                // 创建字符画图片并保存为临时文件
+                charFramePaths[i] = createCharImageFile(frameText, width, height, colorMode, frame, progressId, framePixelOffset, totalPixels, tempFiles, i + 1, frameCount, pregressStart,pregressEnd ,"图像生成：第"+(i + 1)+"帧/共"+frameCount+"帧", progressService);
+                progressService.updateProgress(progressId, pregressEnd, "第"+(i+1)+"帧符画图片生成完成", "图像生成", totalPixels, totalPixels,false);
+
+                // 释放当前帧的内存
+                frames[i] = null;
+                System.gc();
+
+                pregressStart = pregressEnd;
+                pregressEnd = pregressStart + (singlePregress/3);
+                progressService.updateProgress(progressId, pregressEnd, "第"+(i+1)+"帧符画图片编码进WebP字符画动图完成", "WebP编码", totalPixels, totalPixels,false);
             }
 
             // 使用WebP处理服务创建WebP动画
-            progressService.updateProgress(progressId, 90, "创建WebP动画", "WebP编码", totalPixels - 1, totalPixels);
-            String webpOutputPath = webpProcessorClient.createWebpAnimation(charFrames, delays);
+            progressService.updateProgress(progressId, 90, "创建WebP动画", "WebP编码", totalPixels - 1, totalPixels,false);
+            // 使用相同的任务ID进行WebP动画创建，以便继续跟踪进度
+            File webpOutputFile = webpProcessorClient.createWebpAnimationFromFiles(charFramePaths, delays, progressId);
 
             // 读取生成的WebP文件
-            tempFiles.add(Paths.get(webpOutputPath));
-            byte[] resultBytes = Files.readAllBytes(Paths.get(webpOutputPath));
+            tempFiles.add(webpOutputFile.toPath());
+            byte[] resultBytes = Files.readAllBytes(webpOutputFile.toPath());
 
-            progressService.updateProgress(progressId, 100, "WebP处理完成", "完成", totalPixels, totalPixels);
+            progressService.updateProgress(progressId, 100, "WebP处理完成", "完成", totalPixels, totalPixels,true);
 
             return resultBytes;
         } catch (IOException e) {
@@ -367,169 +389,7 @@ public class CharArtProcessor {
             cleanupTempFiles(tempFiles);
         }
     }
-    
-    /**
-     * 创建字符画图片对象（带进度更新）
-     * @param charText 字符画文本
-     * @param originalWidth 原始宽度 (不再使用)
-     * @param originalHeight 原始高度 (不再使用)
-     * @param colorMode 颜色模式 (grayscale, color)
-     * @param originalImage 原始图片，用于彩色模式获取颜色信息
-     * @param progressId 进度ID，用于更新进度
-     * @param pixelOffset 像素偏移量，用于计算当前处理的像素位置
-     * @param totalPixels 总像素数
-     * @param nowFrame 当前处理的帧
-     * @param totalFrame 总共需要处理的帧
-     * @param totalPercentage 总进度百分比
-     * @param progressService 进度服务
-     * @return 字符画图片对象
-     */
-    public static BufferedImage createCharImage(String charText, int originalWidth, int originalHeight, String colorMode, 
-                                     BufferedImage originalImage, String progressId, int pixelOffset, int totalPixels,
-                                     int nowFrame, int totalFrame, int totalPercentage, ProgressService progressService) {
-        try{
-            // 计算字体大小和图片尺寸
-            String[] lines = charText.split("\n");
-            int lineCount = lines.length;
-            int maxLineLength = 0;
 
-            for (String line : lines) {
-                maxLineLength = Math.max(maxLineLength, line.length());
-            }
-
-            // 设置基础字体大小 - 使用固定值以确保清晰可读
-            int baseFontSize = 12; // 基础字体大小
-
-            // 设置字体 - 使用粗体以增强颜色显示效果
-            Font font = new Font(Font.MONOSPACED, "color".equalsIgnoreCase(colorMode) ? Font.BOLD : Font.PLAIN, baseFontSize);
-
-            // 创建临时图形上下文以获取字体度量
-            BufferedImage tempImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
-            Graphics2D tempG = tempImage.createGraphics();
-            tempG.setFont(font);
-            FontMetrics metrics = tempG.getFontMetrics(font);
-            tempG.dispose();
-
-            // 计算字符宽度和行高
-            int charWidth = metrics.charWidth('M'); // 使用等宽字体的标准字符宽度
-            int lineHeight = metrics.getHeight();
-
-            // 计算图片的实际尺寸 - 基于字符画文本的尺寸
-            int imageWidth = maxLineLength * charWidth;
-            int imageHeight = lineCount * lineHeight;
-
-            // 创建最终图像
-            BufferedImage fullImage = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_RGB);
-            Graphics2D fullG = fullImage.createGraphics();
-
-            // 设置渲染质量
-            fullG.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            fullG.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            fullG.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
-
-            // 设置背景 - 对于彩色模式使用深灰色背景以增强对比度
-            if ("color".equalsIgnoreCase(colorMode)) {
-                fullG.setColor(new Color(30, 30, 30)); // 深灰色背景
-            } else {
-                fullG.setColor(Color.WHITE); // 灰度模式保持白色背景
-            }
-            fullG.fillRect(0, 0, imageWidth, imageHeight);
-
-            // 设置字体
-            fullG.setFont(font);
-
-            // 计算起始位置 - 从左上角开始
-            int startX = 0;
-            int startY = metrics.getAscent(); // 只加上基线偏移
-
-            // 根据颜色模式绘制字符
-            boolean isColorMode = "color".equalsIgnoreCase(colorMode);
-
-            // 计算总字符数用于进度更新
-            int totalChars = 0;
-            for (String line : lines) {
-                totalChars += line.length();
-            }
-            int processedChars = 0;
-
-            // 分块处理
-            int blockHeight = 100; // 每次处理100行
-            int numBlocks = (int) Math.ceil((double) lineCount / blockHeight);
-            
-            for (int block = 0; block < numBlocks; block++) {
-                int startLine = block * blockHeight;
-                int endLine = Math.min(startLine + blockHeight, lineCount);
-
-                // 绘制当前块的字符
-                for (int i = startLine; i < endLine && i < lines.length; i++) {
-                    String line = lines[i];
-                    for (int j = 0; j < line.length(); j++) {
-                        char c = line.charAt(j);
-
-                        // 计算当前字符的绘制位置
-                        int x = startX + j * charWidth;
-                        int y = startY + i * lineHeight;
-
-                        if (isColorMode && originalImage != null) {
-                            // 彩色模式：从原图获取对应位置的颜色
-                            // 计算原图中对应的坐标 - 按比例映射
-                            int origX = 0;
-                            int origY = 0;
-
-                            if (maxLineLength > 0 && lineCount > 0) {
-                                origX = Math.min((int)(j * 1.0 / maxLineLength * originalImage.getWidth()), originalImage.getWidth() - 1);
-                                origY = Math.min((int)(i * 1.0 / lineCount * originalImage.getHeight()), originalImage.getHeight() - 1);
-                            }
-
-                            // 获取原始颜色
-                            Color pixelColor = new Color(originalImage.getRGB(origX, origY));
-
-                            // 增强颜色饱和度和亮度
-                            float[] hsb = Color.RGBtoHSB(pixelColor.getRed(), pixelColor.getGreen(), pixelColor.getBlue(), null);
-                            // 增加饱和度，但不超过1.0
-                            hsb[1] = Math.min(1.0f, hsb[1] * 1.5f);
-                            // 确保亮度适中，不会太暗或太亮
-                            hsb[2] = Math.max(0.3f, Math.min(0.9f, hsb[2] * 1.2f));
-
-                            Color enhancedColor = Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
-                            fullG.setColor(enhancedColor);
-                        } else {
-                            // 灰度模式：使用黑色
-                            fullG.setColor(Color.BLACK);
-                        }
-
-                        if (isColorMode) { // 对于彩色模式的所有字符（包括空格）
-                            // 先绘制背景色块
-                            fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
-
-                            // 对于非空格字符，绘制白色字符以增强可读性
-                            if (c != ' ') {
-                                fullG.setColor(Color.WHITE);
-                                fullG.drawString(String.valueOf(c), x, y);
-                            }
-                        } else {
-                            // 灰度模式：使用黑色字符
-                            fullG.setColor(Color.BLACK);
-                            fullG.drawString(String.valueOf(c), x, y);
-                        }
-
-                        // 更新进度
-                        processedChars++;
-                        if (progressId != null && (processedChars % 500 == 0 || processedChars == totalChars)) {
-                            // 计算当前处理的实际像素位置（考虑偏移量）
-                            int currentPixel = pixelOffset + (int)((double)processedChars / totalChars * Objects.requireNonNull(originalImage).getWidth() * originalImage.getHeight());
-                            progressService.updateProgress(progressId, totalPercentage, "生成字符画图片: " + currentPixel + "/" + totalPixels + " 像素", "图像渲染（第"+nowFrame+"/"+totalFrame+"帧）", currentPixel, totalPixels);
-                        }
-                    }
-                }
-            }
-
-            fullG.dispose();
-            return fullImage;
-        } catch (Exception e) {
-            throw new ServiceException("创建动态字符画图片对象失败: " + e.getMessage(), e);
-        }
-    }
 
     /**
      * 将图像转换为字符画文本
@@ -546,11 +406,13 @@ public class CharArtProcessor {
      * @param pixelOffset 像素偏移量
      * @param nowFrame 当前帧
      * @param totalFrame 总帧数
-     * @param totalPercentage 总进度百分比
+     * @param pregressStart 子任务开始前进度百分比
+     * @param pregressEnd 子任务结束后进度百分比
+     * @param stageName 进度阶段
      * @param progressService 进度服务
      * @return 生成的字符画文本
      */
-    public static String convertImageToCharText(BufferedImage image, int densityLevel, boolean limitSize, String progressId, int totalPixels, int pixelOffset, int nowFrame, int totalFrame, int totalPercentage, ProgressService progressService) {
+    public static String convertImageToCharText(BufferedImage image, int densityLevel, boolean limitSize, String progressId, int totalPixels, int pixelOffset, int nowFrame, int totalFrame, double pregressStart,double pregressEnd,String stageName, ProgressService progressService) {
         int width = image.getWidth();
         int height = image.getHeight();
 
@@ -641,7 +503,8 @@ public class CharArtProcessor {
                 if (processedPixels % 1000 == 0 || processedPixels == totalScaledPixels) {
                     // 计算当前处理的实际像素位置（考虑偏移量）
                     int currentPixel = pixelOffset + (int)((double)processedPixels / totalScaledPixels * (width * height));
-                    progressService.updateProgress(progressId, totalPercentage, "生成字符画文本: " + currentPixel + "/" + totalPixels + " 像素", "文本转换（"+nowFrame+"/"+totalFrame+"）", currentPixel, totalPixels);
+                    double progress = pregressStart + ((double)nowFrame / totalFrame * (pregressEnd-pregressStart));
+                    progressService.updateProgress(progressId, progress, "生成字符画文本: " + currentPixel + "/" + totalPixels + " 像素", stageName, currentPixel, totalPixels,false);
                 }
             }
             sb.append('\n');
@@ -667,12 +530,15 @@ public class CharArtProcessor {
      * @param pixelOffset 像素偏移量，用于计算当前处理的像素位置
      * @param totalPixels 总像素数
      * @param tempFiles 临时文件列表，用于跟踪和清理
+     * @param pregressStart 子任务开始前进度百分比
+     * @param pregressEnd 子任务结束后进度百分比
+     * @param stageName 进度阶段
      * @param progressService 进度服务
      * @return 字符画图片文件路径
      */
     public static Path createCharImageFile(String charText, int originalWidth, int originalHeight, String colorMode,
                                      BufferedImage originalImage, String progressId, int pixelOffset, int totalPixels,
-                                     List<Path> tempFiles, ProgressService progressService) {
+                                     List<Path> tempFiles,double pregressStart,double pregressEnd,String stageName,ProgressService progressService) {
         try{
             // 计算字体大小和图片尺寸
             String[] lines = charText.split("\n");
@@ -807,11 +673,11 @@ public class CharArtProcessor {
                         // 更新进度
                         processedChars++;
                         if (progressId != null && (processedChars % 500 == 0 || processedChars == totalChars)) {
-                            // 计算当前进度百分比（60-90%之间）
-                            int progress = 60 + (processedChars * 30 / totalChars);
+                            // 计算当前进度百分比
+                            double progress = (int)(pregressStart + ((double)processedChars / totalChars * (pregressEnd-pregressStart)));
                             // 计算当前处理的实际像素位置（考虑偏移量）
                             int currentPixel = pixelOffset + (int)((double)processedChars / totalChars * Objects.requireNonNull(originalImage).getWidth() * originalImage.getHeight());
-                            progressService.updateProgress(progressId, progress, "生成字符画图片: " + currentPixel + "/" + totalPixels + " 像素", "图像渲染", currentPixel, totalPixels);
+                            progressService.updateProgress(progressId, progress, "生成字符画图片: " + currentPixel + "/" + totalPixels + " 像素", stageName, currentPixel, totalPixels,false);
                         }
                     }
                 }
@@ -841,13 +707,16 @@ public class CharArtProcessor {
      * @param tempFiles 临时文件列表，用于跟踪和清理
      * @param nowFrame 当前处理的帧
      * @param totalFrame 总共需要处理的帧
-     * @param totalPercentage 总进度百分比
+     * @param pregressStart 子任务开始前进度百分比
+     * @param pregressEnd 子任务结束后进度百分比
+     * @param stageName 进度阶段
      * @param progressService 进度服务
      * @return 字符画图片文件路径
      */
     public static Path createCharImageFile(String charText, int originalWidth, int originalHeight, String colorMode, 
                                      BufferedImage originalImage, String progressId, int pixelOffset, int totalPixels,
-                                     List<Path> tempFiles, int nowFrame, int totalFrame, int totalPercentage, ProgressService progressService) {
+                                     List<Path> tempFiles, int nowFrame, int totalFrame,
+                                           double pregressStart,double pregressEnd,String stageName, ProgressService progressService) {
         try{
             // 计算字体大小和图片尺寸
             String[] lines = charText.split("\n");
@@ -982,9 +851,10 @@ public class CharArtProcessor {
                         // 更新进度
                         processedChars++;
                         if (progressId != null && (processedChars % 500 == 0 || processedChars == totalChars)) {
+                            double progress = (int)(pregressStart + ((double)processedChars / totalChars * (pregressEnd-pregressStart)));
                             // 计算当前处理的实际像素位置（考虑偏移量）
                             int currentPixel = pixelOffset + (int)((double)processedChars / totalChars * Objects.requireNonNull(originalImage).getWidth() * originalImage.getHeight());
-                            progressService.updateProgress(progressId, totalPercentage, "生成字符画图片: " + currentPixel + "/" + totalPixels + " 像素", "图像渲染（第"+nowFrame+"/"+totalFrame+"帧）", currentPixel, totalPixels);
+                            progressService.updateProgress(progressId, progress, "生成字符画图片: " + currentPixel + "/" + totalPixels + " 像素", stageName, currentPixel, totalPixels,false);
                         }
                     }
                 }
