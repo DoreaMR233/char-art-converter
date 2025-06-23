@@ -125,7 +125,7 @@ export const convertImage = (formData, onProgress) => {
  * @param {string} contentType - 图片的内容类型
  * @returns {Promise<AxiosResponse>} 包含图片Blob数据的响应对象
  */
-export const getTempImage = (filePath, contentType) => {
+  export const getTempImage = (filePath, contentType) => {
   return api.get(`/get-temp-image/${filePath}`, {
     responseType: 'blob',
     headers: {
@@ -166,7 +166,7 @@ export const getCharText = (filename) => {
  * @returns {Function} 取消订阅的清理函数
  */
 export const subscribeToProgress = (id, onMessage) => {
-  let eventSource = new EventSource(`${API_BASE_PATH}/progress/${id}`)
+  let eventSource = new EventSource(`${apiBasePath}/progress/${id}`)
   
   /**
    * 连接打开时的处理
