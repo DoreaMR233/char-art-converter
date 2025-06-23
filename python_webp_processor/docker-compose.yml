@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # WebP处理服务
   webp-processor:

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 字符画转换器一体化服务
   char-art-converter-full:
