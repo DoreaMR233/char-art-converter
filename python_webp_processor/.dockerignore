@@ -1,0 +1,83 @@
+# 版本控制系统
+.git
+.gitignore
+.gitattributes
+
+# IDE和编辑器文件
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境 - 这些不需要包含在Docker镜像中
+.env
+.venv
+env/
+venv/
+ENV/
+
+
+# 日志文件 - 这些会在容器中生成
+*.log
+logs/
+
+# 临时文件
+*.tmp
+temp/
+
+# 文档和其他非必要文件
+README.md
+LICENSE
+Docker.md
+*.md
+img/
+
+./Docker.md
+./README.md
+./logs
+./.idea
+./.vscode
+./.venv
+./data
+
+# 不排除这些文件，因为它们在Dockerfile中被使用
+!docker-entrypoint.sh
+!.env
+!.env.example
+!requirements.txt
