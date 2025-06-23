@@ -13,32 +13,38 @@ services:
       # Redis配置
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_DATABASE=0
-      - REDIS_TIMEOUT=60000
+      # - REDIS_DATABASE=0
+      # - REDIS_TIMEOUT=60000
       # 字符画缓存配置
-      - CHAR_ART_CACHE_TTL=3600
-      - CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:"
-      # WebP处理服务配置
-      - WEBP_PROCESSOR_URL=http://webp-processor-backend:5000
-      - WEBP_PROCESSOR_ENABLED=true
-      - WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000
-      - WEBP_PROCESSOR_MAX_RETRIES=2
-      # 服务器配置
+      # - CHAR_ART_CACHE_TTL=3600
+      # - CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:"
+      # WebP处理服务配置，此处端口要与char-art-webp-processor中的PORT参数保持一致
+      - WEBP_PROCESSOR_URL=http://webp-processor-backend:8081
+      # - WEBP_PROCESSOR_ENABLED=true
+      # - WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000
+      # - WEBP_PROCESSOR_MAX_RETRIES=2
+      # 服务器配置，此处要与char-art-frontend中args的BACKEND_PORT参数保持一致
       - SERVER_PORT=8080
       # 上传文件配置
-      - MAX_FILE_SIZE=10MB
-      - MAX_REQUEST_SIZE=10MB
+      # - MAX_FILE_SIZE=10MB
+      # - MAX_REQUEST_SIZE=10MB
       # 日志配置
-      - LOG_LEVEL=INFO
-      - LOG_FILE_MAX_SIZE=10MB
-      - LOG_FILE_MAX_HISTORY=30
+      # - LOG_LEVEL=INFO
+      # - LOG_FILE_MAX_SIZE=10MB
+      # - LOG_FILE_MAX_HISTORY=30
       # 字符画默认配置
-      - DEFAULT_DENSITY=medium
-      - DEFAULT_COLOR_MODE=grayscale
+      # - DEFAULT_DENSITY=medium
+      # - DEFAULT_COLOR_MODE=grayscale
     depends_on:
       - redis
       - webp-processor-backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
     networks:
       - char-art-network
     volumes:
@@ -52,25 +58,32 @@ services:
       dockerfile: Dockerfile
     container_name: char-art-webp-processor
     ports:
-      - "8081:5000"
+      - "8081:8081"
     environment:
       # 服务配置
-      - PORT=5000
-      - LOG_LEVEL=INFO
-      - DEBUG=False
-      - MAX_CONTENT_LENGTH=16777216
-      - TEMP_FILE_TTL=3600
-      # Gunicorn配置
-      - GUNICORN_WORKERS=4  # 工作进程数，建议设置为CPU核心数×2+1
-      - GUNICORN_TIMEOUT=120  # 请求超时时间(秒)
-      - GUNICORN_MAX_REQUESTS=1000  # 每个工作进程处理的最大请求数
-      - GUNICORN_MAX_REQUESTS_JITTER=50  # 最大请求数的随机抖动值
+      # 要与暴露接口一致，用于后端访问此容器
+      # - PORT=8081
+      # - LOG_LEVEL=INFO
+      # - TEMP_FILE_TTL=3600
+      # - DEBUG=False
+      # 最大文件大小，单位为字节
+      # - MAX_CONTENT_LENGTH=10485760
+      # Redis设置
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # - REDIS_CHANNEL=sse
+      # 进度间隔时长
+      # - PROGRESS_UPDATE_INTERVAL=0.5
+      # Java后端服务URL
+      - JAVA_BACKEND_URL=http://char-art-backend:8080
+    depends_on:
+      - redis
     volumes:
       - webp-processor-data:/app/data
       - webp-processor-logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -94,14 +107,28 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # 此处变量会覆盖.env和.env.production中的变量
+        # 资源路径前缀，可选，不填写则默认为空，填写时不要带上前后斜杠
+        - VITE_BASE_PATH=charartconverter
+        # 后端主机，可选，不填写则默认为http://localhost，填写时带上http://
+        - BACKEND_HOST=http://char-art-backend
+        # 后端端口，可选，不填写则默认为8080，此处要与char-art-backend中SERVER_PORT参数保持一致
+        - BACKEND_PORT=8080
     container_name: char-art-frontend
     ports:
-      - "80:80"
-    environment:
-      - API_URL=http://backend:8080
-      - VITE_BASE_PATH=
-      - MAX_UPLOAD_SIZE=10
-      - VITE_API_BASE_PATH=/api
+      - "9583:80"
+#    environment:
+      # 修改环境变量，请修改.env和.env.production中的变量，再重新制作镜像，此处修改无用，仅做示例
+      # Vite环境变量
+      # - VITE_BASE_PATH=char-art
+      # - VITE_API_URL=http://char-art-backend:8080
+      # - VITE_API_BASE_PATH=/api
+      # - VITE_MAX_UPLOAD_SIZE=10
+      # 兼容旧版本的环境变量
+      # - BASE_PATH=char-art
+      # - API_URL=http://char-art-backend:8080
+      # - MAX_UPLOAD_SIZE=10
     restart: unless-stopped
     networks:
       - char-art-network
