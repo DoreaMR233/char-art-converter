@@ -242,7 +242,7 @@ backend/
    使用JAR包运行：
 
    ```bash
-   java -jar target/char-art-converter-0.0.1-SNAPSHOT.jar
+   java -jar target/char-art-converter-1.0.0.jar
    ```
 
    或者使用Maven直接运行：
@@ -264,7 +264,7 @@ backend/
 - **内存配置**：处理大图片或高分辨率GIF可能需要较大的内存，可以通过JVM参数调整内存大小：
 
   ```bash
-  java -Xmx1g -jar target/char-art-converter-0.0.1-SNAPSHOT.jar
+  java -Xmx1g -jar target/char-art-converter-1.0.0.jar
   ```
 
 - **临时文件清理**：服务会创建临时文件进行处理，正常情况下会自动清理，但如果服务异常终止，可能需要手动清理临时目录
