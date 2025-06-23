@@ -1,379 +1,373 @@
-# WebP动图处理服务
+# WebP 动图处理服务
 
-这是一个Python Flask应用，用于处理WebP格式的动图，并将其解析为Java后端所需的数据结构。该服务作为字符画转换器项目的组件，专门负责WebP动图的处理，为主后端提供支持。
+一个基于 FastAPI 的 WebP 动图处理服务，提供 WebP 动图解析、帧提取和动画创建功能。
 
-> **Docker部署说明**: 如需了解如何使用Docker部署本服务，请参阅[Docker部署指南](./Docker.md)。
+## 目录
 
-## 功能特点
-
-- 接收并处理WebP格式动图
-- 解析动图的帧和延迟信息
-- 返回JSON格式的数据，包含帧数、延迟时间和帧图像数据
-- 支持创建WebP动画（从多个图片帧合成）
-- 自动清理临时文件
-- 提供健康检查和版本信息接口
-- 支持Docker容器化部署
-
-## 技术栈
-
-- **Python 3.6+**：核心编程语言
-- **Flask 2.0.1**：Web框架
-- **Gunicorn 20.1.0**：WSGI HTTP服务器，用于生产环境部署
-- **Pillow 9.0.0**：图像处理库，用于WebP解析和处理
-- **python-dotenv 0.19.0**：环境变量管理
-- **requests 2.26.0**：HTTP客户端
-- **ffmpeg-python 0.2.0**：视频处理支持
-- **Werkzeug 2.0.1**：WSGI工具库
-- **setproctitle 1.3.2**：设置进程名称，便于监控（生产环境推荐）
+- [WebP 动图处理服务](#webp-动图处理服务)
+  - [目录](#目录)
+  - [项目结构](#项目结构)
+  - [技术栈](#技术栈)
+  - [API接口](#api接口)
+    - [WebP处理接口](#webp处理接口)
+    - [进度监控接口](#进度监控接口)
+    - [系统接口](#系统接口)
+  - [使用说明](#使用说明)
+    - [本地部署说明](#本地部署说明)
+      - [环境要求](#环境要求)
+      - [安装步骤](#安装步骤)
+      - [注意事项](#注意事项)
+    - [Docker部署说明](#docker部署说明)
+    - [配置文件说明](#配置文件说明)
+      - [服务器配置](#服务器配置)
+      - [临时文件配置](#临时文件配置)
+      - [日志配置](#日志配置)
+      - [Redis配置](#redis配置)
+      - [进度监控配置](#进度监控配置)
+  - [许可证](#许可证)
 
 ## 项目结构
 
+``` text
+python_webp_processor/
+├── api/                    # API路由模块
+│   ├── __init__.py
+│   ├── health.py          # 健康检查接口
+│   ├── progress.py        # 进度监控接口
+│   └── webp.py           # WebP处理接口
+├── utils/                 # 工具模块
+│   ├── __init__.py
+│   ├── scheduler.py       # 任务调度器
+│   ├── thread_safe_dict.py # 线程安全字典
+│   └── utils.py          # 工具函数
+├── .dockerignore         # Docker忽略文件
+├── .env.example          # 环境变量示例文件
+├── config.py             # 配置文件
+├── docker-compose.yml    # Docker Compose配置
+├── docker-entrypoint.sh  # Docker入口脚本
+├── Dockerfile            # Docker镜像构建文件
+├── Docker.md             # Docker部署文档
+├── main.py               # 应用入口文件
+├── README.md             # 项目说明文档
+├── README_FastAPI.md     # FastAPI相关文档
+└── requirements.txt      # Python依赖文件
 ```
-.
-├── api/                    # API接口目录
-│   ├── __init__.py        # API蓝图初始化
-│   ├── health.py          # 健康检查和版本信息接口
-│   └── webp.py            # WebP处理接口
-├── utils/                  # 工具函数目录
-│   └── utils.py           # 工具函数，如临时文件清理
-├── .env                    # 环境变量配置文件
-├── app.py                  # 应用入口
-├── config.py               # 配置管理
-├── wsgi.py                 # WSGI入口点，用于Gunicorn
-├── gunicorn.conf.py        # Gunicorn配置文件
-├── Dockerfile              # Docker构建文件
-├── docker-compose.yml      # Docker Compose配置
-├── docker-entrypoint.sh    # Docker容器入口脚本
-└── requirements.txt        # 依赖项列表
-```
+
+## 技术栈
+
+### 核心框架
+
+- **FastAPI** `0.104.1` - 现代、快速的Web框架
+- **Uvicorn** `0.24.0` - ASGI服务器
+
+### 图像处理
+
+- **Pillow** `10.1.0` - Python图像处理库
+
+### 异步支持
+
+- **aiofiles** `23.2.0` - 异步文件操作
+- **aioredis** `2.0.1` - 异步Redis客户端
+
+### 数据验证
+
+- **Pydantic** `2.5.0` - 数据验证和设置管理
+
+### 实时通信
+
+- **sse-starlette** `1.6.5` - 服务器发送事件支持
+
+### 任务调度
+
+- **APScheduler** `3.10.4` - 高级Python调度器
+
+### 缓存
+
+- **Redis** `5.0.1` - 内存数据结构存储
+
+### 工具库
+
+- **python-dotenv** `1.0.0` - 环境变量管理
+- **python-multipart** `0.0.6` - 多部分表单数据解析
+- **fastapi-cors** `0.1.0` - CORS中间件
+
+### 容器化
+
+- **Docker** - 容器化部署
+- **Docker Compose** - 多容器应用编排
 
 ## API接口
 
-### 1. 处理WebP动图
+### WebP处理接口
 
-**URL**: `/api/process-webp`
+将WebP动图处理为单独的帧，或将多个图片帧合成为WebP动画。
 
-**方法**: `POST`
+#### 处理WebP动图
 
-**参数**:
-- `image`: WebP格式的动图文件（multipart/form-data）
+- **URL**: `/api/process-webp`
+- **方法**: POST
+- **Content-Type**: multipart/form-data
+- **参数**:
+  - `image`: (必需) 要处理的WebP动图文件
+  - `task_id`: (可选) 任务ID，用于跟踪处理进度，如果不提供则自动生成
+- **响应**: JSON格式，包含帧信息和延迟数据
 
-**返回**:
-```json
-{
-    "frameCount": "帧数",
-    "delays": ["帧1延迟", "帧2延迟", "..."],
-    "frames": ["帧1的base64编码", "帧2的base64编码", "..."]
-}
-```
+  ```json
+  {
+    "frameCount": 10,
+    "delays": [100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+    "frames": ["webp_frames_20230101123456/frame_0000.png", "webp_frames_20230101123456/frame_0001.png", ...],
+    "task_id": "550e8400-e29b-41d4-a716-446655440000"
+  }
+  ```
 
-**错误返回**:
-```json
-{
-    "error": "错误信息"
-}
-```
+#### 创建WebP动画
 
-### 2. 创建WebP动画
+- **URL**: `/api/create-webp-animation`
+- **方法**: POST
+- **Content-Type**: application/x-www-form-urlencoded
+- **参数**:
+  - `frame_paths`: (必需) JSON格式的帧文件路径数组
+  - `delays`: (必需) JSON格式的延迟时间数组（毫秒）
+  - `frame_format`: (必需) JSON格式的帧格式数组
+  - `task_id`: (可选) 任务ID，用于跟踪处理进度，如果不提供则自动生成
+- **响应**: JSON格式，包含生成的WebP动画文件路径
 
-**URL**: `/api/create-webp-animation`
+  ```json
+  {
+    "webp": "animation_20230101123456.webp",
+    "task_id": "550e8400-e29b-41d4-a716-446655440000"
+  }
+  ```
 
-**方法**: `POST`
+#### 获取图片
 
-**请求体** (JSON):
-```json
-{
-    "framePaths": ["路径1", "路径2", "..."],
-    "delays": ["延迟1", "延迟2", "..."]
-}
-```
+- **URL**: `/api/get-image/{file_path}`
+- **方法**: GET
+- **参数**:
+  - `file_path`: (必需) 图片文件的相对路径（相对于临时目录）
+- **响应**: 图片二进制数据，响应完成后自动删除临时文件
 
-**返回**:
-```json
-{
-    "webpPath": "WebP文件临时路径"
-}
-```
+### 进度监控接口
 
-**错误返回**:
-```json
-{
-    "error": "错误信息"
-}
-```
+使用SSE技术获取处理进度的实时更新。
 
-### 3. 健康检查
+#### 创建进度跟踪任务
 
-**URL**: `/api/health`
+- **URL**: `/api/progress/create`
+- **方法**: POST
+- **响应**: JSON格式，包含新创建的任务ID
 
-**方法**: `GET`
+  ```json
+  {
+    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "message": "进度跟踪任务已创建"
+  }
+  ```
 
-**返回**:
-```json
-{
-    "status": "ok",
-    "timestamp": "2023-05-01T12:34:56.789Z",
-    "service": "WebP Processor API",
-    "version": "1.0.0"
-}
-```
+#### 获取任务进度
 
-### 4. 版本信息
+- **URL**: `/api/progress/{task_id}`
+- **方法**: GET
+- **参数**:
+  - `task_id`: (必需) 任务ID，用于标识要跟踪的特定处理任务
+- **响应**: SSE事件流，包含进度更新
+  - 事件类型: `webp` - 进度更新事件，包含当前进度百分比、消息、阶段等信息
+  - 事件类型: `heartbeat` - 保持连接活跃的心跳事件
+  - 事件类型: `close` - 连接关闭事件
 
-**URL**: `/api/version`
+#### 关闭进度连接
 
-**方法**: `GET`
+- **URL**: `/api/progress/close/{task_id}`
+- **方法**: POST
+- **参数**:
+  - `task_id`: (必需) 任务ID，用于标识要关闭的特定连接
+- **响应**: JSON格式，包含操作结果
 
-**返回**:
-```json
-{
-    "name": "WebP Processor API",
-    "version": "1.1.0",
-    "description": "WebP动图处理服务",
+  ```json
+  {
+    "status": "success",
+    "message": "任务 550e8400-e29b-41d4-a716-446655440000 的进度连接已关闭"
+  }
+  ```
+
+### 系统接口
+
+提供服务健康状态和版本信息的检查。
+
+#### 健康检查
+
+- **URL**: `/api/health`
+- **方法**: GET
+- **响应**: JSON格式，包含服务状态信息
+
+  ```json
+  {
+    "status": "healthy",
+    "timestamp": "2023-01-01T12:34:56.789Z",
+    "uptime": "1:23:45",
+    "version": "1.0.0",
     "endpoints": [
-        {"path": "/api/health", "method": "GET", "description": "健康检查"},
-        {"path": "/api/process-webp", "method": "POST", "description": "处理WebP动图"},
-        {"path": "/api/create-webp-animation", "method": "POST", "description": "创建WebP动画"},
-        {"path": "/api/version", "method": "GET", "description": "版本信息"}
+      {"path": "/api/health", "method": "GET", "description": "健康检查"},
+      {"path": "/api/progress/create", "method": "POST", "description": "创建进度跟踪任务"},
+      ...
     ]
-}
-```
+  }
+  ```
 
-## 安装指南
+#### 版本信息
 
-### 前提条件
+- **URL**: `/api/version`
+- **方法**: GET
+- **响应**: JSON格式，包含版本号和构建信息
 
-- Python 3.6+
+  ```json
+  {
+    "version": "1.0.0",
+    "build_time": "2023-01-01T12:34:56.789Z",
+    "python_version": "3.9.0"
+  }
+  ```
+
+## 使用说明
+
+### 本地部署说明
+
+#### 环境要求
+
+- Python 3.8+
 - pip（Python包管理器）
+- Redis 5.0+（用于缓存和任务队列）
 
-### 方法一：直接安装
+#### 安装步骤
 
-1. 克隆或下载项目代码
-
-2. 安装依赖包：
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3. 运行应用（开发模式）：
-
-    ```bash
-    python app.py
-    ```
-
-4. 使用Gunicorn运行（生产模式）：
-
-    ```bash
-    gunicorn --config gunicorn.conf.py wsgi:application
-    ```
-
-### 方法二：直接使用Gunicorn（推荐）
-
-```bash
-# 使用Gunicorn启动
-gunicorn --config gunicorn.conf.py wsgi:application
-```
-
-### 方法三：Docker部署
-
-1. 构建并启动容器：
+1. **克隆项目到本地**
 
    ```bash
-   docker-compose up -d
+   git clone https://github.com/yourusername/char-art-converter.git
+   cd char-art-converter/python_webp_processor
    ```
 
-2. 查看日志：
+2. **配置Redis服务**
+
+   确保Redis服务已启动并可访问，默认配置为：
+   - 主机：localhost
+   - 端口：6379
+   - 数据库：0
+
+3. **安装依赖包**
 
    ```bash
-   docker-compose logs -f
+   pip install -r requirements.txt
    ```
 
-3. 停止服务：
+4. **配置环境变量**
+
+   创建环境变量文件：
 
    ```bash
-   docker-compose down
+   cp .env.example .env
    ```
 
-4. 使用自定义Gunicorn配置启动容器：
+   根据需要修改 `.env` 文件中的配置项。
 
-```bash
-docker run -d \
-  --name webp-processor \
-  -p 8081:5000 \
-  -e GUNICORN_WORKERS=4 \
-  -e GUNICORN_TIMEOUT=180 \
-  webp-processor:latest
+5. **运行应用**
+
+   方法1 - 使用启动脚本（推荐）：
+
+   ```bash
+   python main.py
+   ```
+
+   方法2 - 直接使用uvicorn：
+
+   ```bash
+   uvicorn main:app --host 0.0.0.0 --port 8081 --reload
+   ```
+
+6. **访问服务**
+
+   服务启动后，可以通过以下URL访问：
+   - API接口: <http://localhost:8081/api>
+   - 健康检查: <http://localhost:8081/api/health>
+
+   **API文档**（自动生成）：
+   - **Swagger UI**: <http://localhost:8081/docs>
+   - **ReDoc**: <http://localhost:8081/redoc>
+   - **OpenAPI JSON**: <http://localhost:8081/openapi.json>
+
+#### 注意事项
+
+- **Redis依赖**：服务依赖Redis进行缓存和任务队列管理，请确保Redis服务已启动并可访问
+- **Python版本**：建议使用Python 3.8或更高版本以获得最佳性能和兼容性
+- **内存配置**：处理大型WebP动图可能需要较大的内存，建议在资源受限环境中限制并发请求数量
+- **临时文件清理**：服务会自动清理过期的临时文件，可通过`TEMP_FILE_TTL`环境变量调整清理策略
+- **文件权限**：确保应用对临时目录有读写权限
+
+### Docker部署说明
+
+如需了解如何使用Docker部署本服务，请参阅 [Docker部署指南](./Docker.md)。
+
+Docker部署提供了更简便的部署方式，包含了所有必要的依赖服务（Redis等），无需手动配置环境。
+
+### 配置文件说明
+
+项目使用环境变量进行配置，支持通过 `.env` 文件设置。主要配置项在 `.env` 文件中，以下是各配置项的详细说明：
+
+#### 服务器配置
+
+```properties
+# 服务监听端口
+PORT=8081
+# 调试模式开关
+DEBUG=False
+# 最大文件上传大小（字节）
+MAX_CONTENT_LENGTH=10485760
 ```
 
-## 配置选项
+#### 临时文件配置
 
-服务可通过环境变量或`.env`文件进行配置：
-
-### 基本配置
-
-| 环境变量                 | 描述                                 | 默认值             |
-|----------------------|------------------------------------|-----------------|
-| `PORT`               | 服务监听端口                             | 5000            |
-| `LOG_LEVEL`          | 日志级别 (DEBUG, INFO, WARNING, ERROR) | INFO            |
-| `DEBUG`              | 调试模式                               | False           |
-| `MAX_CONTENT_LENGTH` | 最大上传文件大小（字节）                       | 10485760 (10MB) |
-| `TEMP_DIR`           | 临时文件目录                             | 自动创建的临时目录       |
-| `TEMP_FILE_TTL`      | 临时文件保留时间（秒）                        | 3600 (1小时)      |
-
-### Gunicorn配置
-
-| 环境变量                           | 描述             | 默认值        |
-|--------------------------------|----------------|------------|
-| `GUNICORN_WORKERS`             | 工作进程数          | CPU核心数×2+1 |
-| `GUNICORN_TIMEOUT`             | 请求超时时间(秒)      | 120        |
-| `GUNICORN_MAX_REQUESTS`        | 每个工作进程处理的最大请求数 | 1000       |
-| `GUNICORN_MAX_REQUESTS_JITTER` | 最大请求数的随机抖动值    | 50         |
-
-## 与Java后端集成
-
-此服务设计为与Java后端的字符画转换服务配合使用：
-
-1. Java后端通过HTTP请求调用此服务的`/api/process-webp`接口，上传WebP动图
-2. 服务解析WebP动图并返回帧和延迟信息
-3. Java后端使用返回的信息处理每一帧，生成字符画
-4. Java后端可以调用`/api/create-webp-animation`接口，将处理后的字符画帧合成为新的WebP动画
-
-## 注意事项
-
-1. **临时文件管理**：
-   - 服务会自动清理过期的临时文件
-   - 可通过`TEMP_FILE_TTL`环境变量调整临时文件保留时间
-   - 服务退出时会清理自动创建的临时目录
-
-2. **文件大小限制**：
-   - 默认限制上传文件大小为10MB
-   - 可通过`MAX_CONTENT_LENGTH`环境变量调整
-
-3. **内存使用**：
-   - 处理大型WebP动图可能消耗较多内存
-   - 在资源受限环境中，建议限制并发请求数量
-
-4. **Docker部署**：
-   - 使用Docker部署时，可通过`docker-compose.yml`文件调整环境变量
-   - 服务包含健康检查，可与容器编排系统集成
-
-5. **安全考虑**：
-   - 此服务设计为内部服务，不建议直接暴露到公网
-   - 生产环境中应考虑添加身份验证和访问控制
-
-## 故障排除
-
-1. **服务无法启动**：
-   - 检查Python版本是否满足要求
-   - 检查依赖项是否正确安装
-   - 检查端口是否被占用
-
-2. **文件上传失败**：
-   - 检查文件格式是否为WebP
-   - 检查文件大小是否超过限制
-   - 检查临时目录是否有写入权限
-
-3. **处理WebP失败**：
-   - 检查WebP文件是否为有效的动图
-   - 检查Pillow库是否正确安装并支持WebP格式
-
-## Gunicorn部署
-
-### 为什么使用Gunicorn
-
-- **并发处理能力**：Gunicorn使用预分叉工作模式，可以同时处理多个请求
-- **稳定性**：自动处理崩溃的工作进程，提高服务可靠性
-- **资源利用**：更有效地利用多核处理器
-- **生产级别**：适合生产环境的WSGI HTTP服务器
-
-### Gunicorn配置文件
-
-服务使用`gunicorn.conf.py`作为Gunicorn的配置文件，包含以下主要设置：
-
-```python
-# 绑定的IP和端口
-bind = "0.0.0.0:5000"
-
-# 工作进程数
-# 设置为多核CPU数量×2+1
-workers = 5
-
-# 工作模式
-worker_class = 'sync'
-
-# 日志配置
-accesslog = "/app/logs/access.log"
-errorlog = "/app/logs/error.log"
+```properties
+# 临时文件存储目录
+TEMP_DIR=./data
+# 临时文件保留时间（秒）
+TEMP_FILE_TTL=3600
 ```
 
-### 性能调优
+#### 日志配置
 
-#### 工作进程数量
-
-工作进程数量的最佳值取决于服务器的CPU核心数和内存大小。一般建议：
-
-- CPU密集型应用：`CPU核心数 + 1`
-- I/O密集型应用：`CPU核心数 × 2 + 1`
-
-对于WebP处理服务，由于涉及图像处理，属于CPU和I/O混合型，默认使用`CPU核心数 × 2 + 1`的配置。
-
-#### 最大请求数
-
-设置`GUNICORN_MAX_REQUESTS`可以防止内存泄漏，当工作进程处理的请求数达到这个值时，会自动重启。
-
-`GUNICORN_MAX_REQUESTS_JITTER`添加随机抖动，防止所有工作进程同时重启。
-
-### 监控
-
-#### 日志
-
-Gunicorn的访问日志和错误日志分别保存在：
-
-- 访问日志：`/app/logs/access.log`
-- 错误日志：`/app/logs/error.log`
-
-### 常见问题
-
-#### 1. 请求超时
-
-如果处理大型WebP文件时出现超时，可以增加`GUNICORN_TIMEOUT`的值：
-
-```bash
-docker run -d --name webp-processor -p 8081:5000 -e GUNICORN_TIMEOUT=300 webp-processor:latest
+```properties
+# 日志级别
+LOG_LEVEL=INFO
 ```
 
-#### 2. 内存使用过高
+#### Redis配置
 
-如果服务器内存有限，可以减少工作进程数量：
-
-```bash
-docker run -d --name webp-processor -p 8081:5000 -e GUNICORN_WORKERS=2 webp-processor:latest
+```properties
+# Redis服务器地址
+REDIS_HOST=localhost
+# Redis服务器端口
+REDIS_PORT=6379
+# Redis数据库编号
+REDIS_DB=0
+# Redis连接密码（可选）
+REDIS_PASSWORD=
 ```
 
-#### 3. 进程没有自动重启
+#### 进度监控配置
 
-检查Docker的重启策略是否设置为`unless-stopped`或`always`。
-
-## 开发指南
-
-### 添加新API端点
-
-1. 在`api`目录下创建新的Python文件或在现有文件中添加新的路由
-2. 在`api/__init__.py`中导入新模块（如果创建了新文件）
-3. 使用`@api_bp.route`装饰器定义新的路由
-
-### 修改配置
-
-1. 在`config.py`中添加新的配置项
-2. 使用`os.environ.get`从环境变量获取值，并提供默认值
-
-### 构建Docker镜像
-
-```bash
-docker build -t webp-processor .
+```properties
+# 进度更新间隔（秒）
+PROGRESS_UPDATE_INTERVAL=0.5
 ```
+
+配置说明：
+
+- **调试模式**：开启后会输出详细的日志信息，仅在开发环境使用
+- **文件大小限制**：建议根据服务器性能和网络带宽调整
+- **临时文件清理**：系统会自动清理超过TTL时间的临时文件
+- **Redis连接**：用于缓存处理进度和任务队列，确保Redis服务可用
 
 ## 许可证
 
-[MIT License](../LICENSE)
+本项目采用 MIT 许可证。详情请参阅 [LICENSE](../LICENSE) 文件。

@@ -1,241 +1,402 @@
-# WebP处理服务 Docker 部署指南
+# WebP 处理服务 Docker 部署指南
 
-本文档提供了使用 Docker 部署 WebP 处理服务的详细说明，包括 Docker Compose 和 docker run 两种部署方式。
+本文档提供了使用 Docker 部署 WebP 处理服务的详细说明，包括 Docker Compose 和 Docker Run 两种部署方式。
 
 ## 目录
 
-- [WebP处理服务 Docker 部署指南](#webp处理服务-docker-部署指南)
+- [WebP 处理服务 Docker 部署指南](#webp-处理服务-docker-部署指南)
   - [目录](#目录)
   - [前提条件](#前提条件)
   - [项目结构](#项目结构)
   - [使用 Docker Compose 部署](#使用-docker-compose-部署)
     - [构建并启动服务](#构建并启动服务)
-    - [验证服务状态](#验证服务状态)
+    - [验证Docker Compose服务状态](#验证docker-compose服务状态)
     - [访问服务](#访问服务)
     - [停止服务](#停止服务)
   - [使用 Docker Run 部署](#使用-docker-run-部署)
     - [构建镜像](#构建镜像)
     - [运行容器](#运行容器)
-    - [验证容器服务状态](#验证容器服务状态)
+      - [基本运行](#基本运行)
+      - [带自定义配置运行](#带自定义配置运行)
+    - [验证Docker Run服务状态](#验证docker-run服务状态)
   - [配置参数](#配置参数)
-    - [环境变量](#环境变量)
-      - [服务器配置](#服务器配置)
-      - [日志配置](#日志配置)
-      - [应用配置](#应用配置)
-  - [数据持久化](#数据持久化)
-  - [与后端服务集成](#与后端服务集成)
+    - [配置文件变量](#配置文件变量)
+      - [使用示例](#使用示例)
+    - [卷](#卷)
+      - [卷使用示例](#卷使用示例)
+    - [网络](#网络)
+      - [网络使用示例](#网络使用示例)
+  - [与其他服务集成](#与其他服务集成)
+    - [与后端服务集成](#与后端服务集成)
+      - [使用Docker Compose集成](#使用docker-compose集成)
+      - [使用Docker网络集成](#使用docker网络集成)
+    - [与前端服务集成](#与前端服务集成)
+      - [使用Docker Compose方式集成](#使用docker-compose方式集成)
+      - [使用Docker网络方式集成](#使用docker网络方式集成)
+    - [与Redis服务集成](#与redis服务集成)
+    - [完整的服务集成示例](#完整的服务集成示例)
   - [自定义构建](#自定义构建)
     - [修改Dockerfile](#修改dockerfile)
     - [修改启动脚本](#修改启动脚本)
   - [常见问题](#常见问题)
-    - [1. 文件上传大小限制](#1-文件上传大小限制)
-    - [2. 日志查看](#2-日志查看)
+    - [1. Redis连接问题](#1-redis连接问题)
+    - [2. 文件上传大小限制](#2-文件上传大小限制)
     - [3. 临时文件清理](#3-临时文件清理)
     - [4. 健康检查失败](#4-健康检查失败)
-    - [5. 停止和删除容器](#5-停止和删除容器)
+    - [5. 日志查看](#5-日志查看)
+    - [6. 停止和删除容器](#6-停止和删除容器)
 
 ## 前提条件
 
-- Docker 19.03.0+
-- Docker Compose 1.27.0+ (如使用 Docker Compose 部署)
-- Git (可选，用于克隆项目)
+在开始之前，请确保您的系统已安装以下软件：
+
+- Docker 20.10.0 或更高版本
+- Docker Compose 2.0.0 或更高版本（如果使用 Docker Compose 部署）
+- 至少 512MB 可用内存
+- 至少 1GB 可用磁盘空间
 
 ## 项目结构
 
 ``` text
-./
-├── Dockerfile            # 用于构建WebP处理服务的Docker镜像
-├── docker-compose.yml    # 定义服务组合
-├── docker-entrypoint.sh  # 容器启动脚本，用于配置环境变量
-├── app.py                # 应用入口
-├── config.py             # 配置文件
-├── requirements.txt      # 依赖项
-└── api/                  # API模块目录
-    ├── __init__.py
-    ├── health.py         # 健康检查接口
-    └── webp.py           # WebP处理接口
+python_webp_processor/
+├── Dockerfile                 # Docker 镜像构建文件
+├── docker-compose.yml        # Docker Compose 配置文件
+├── docker-entrypoint.sh      # 容器启动脚本
+├── requirements.txt           # Python 依赖包列表
+├── .env                       # 环境变量配置文件
+├── .env.template             # 环境变量模板文件
+├── config.py                 # 应用配置文件
+├── main.py                   # 应用入口文件
+├── utils/                    # 工具模块
+└── logs/                     # 日志目录（运行时创建）
 ```
 
 ## 使用 Docker Compose 部署
 
 ### 构建并启动服务
 
+在 `python_webp_processor` 目录下执行以下命令：
+
 ```bash
-# 在项目根目录下执行
+# 构建并启动服务
 docker-compose up -d
+
+# 仅构建镜像
+docker-compose build
+
+# 强制重新构建
+docker-compose up -d --build
 ```
 
-这将启动 `webp-processor` 服务，并将容器的5000端口映射到主机的8081端口。
-
-### 验证服务状态
+### 验证Docker Compose服务状态
 
 ```bash
-# 检查容器状态
+# 查看服务状态
 docker-compose ps
 
-# 查看WebP处理服务日志
+# 查看服务日志
 docker-compose logs -f webp-processor
+
+# 查看最近100行日志
+docker-compose logs --tail=100 webp-processor
 ```
 
 ### 访问服务
 
-服务启动后，可以通过 `http://localhost:8081/api/health` 检查服务健康状态。如果服务正常运行，将返回：
+服务启动后，可以通过以下方式访问：
 
-```json
-{"status":"ok"}
-```
+- **健康检查端点**: <http://localhost:8081/api/health>
+- **WebP转换API**: <http://localhost:8081/api/convert>
+- **进度查询API**: <http://localhost:8081/api/progress>
 
 ### 停止服务
 
 ```bash
+# 停止服务
 docker-compose down
+
+# 停止服务并删除卷
+docker-compose down -v
+
+# 停止服务并删除镜像
+docker-compose down --rmi all
 ```
 
 ## 使用 Docker Run 部署
 
 ### 构建镜像
 
-在项目根目录下执行以下命令构建Docker镜像：
-
 ```bash
+# 在 python_webp_processor 目录下构建镜像
 docker build -t webp-processor:latest .
+
+# 使用自定义标签构建
+docker build -t webp-processor:v1.0.0 .
 ```
 
 ### 运行容器
 
+#### 基本运行
+
 ```bash
-docker run -d \
-  --name webp-processor \
+# 创建 Docker 网络
+docker network create char-art-network
+
+# 启动 Redis 服务
+docker run -d --name redis \
   --network char-art-network \
-  -p 8081:5000 \
+  -v redis-data:/data \
+  redis:6.2-alpine redis-server --appendonly yes
+
+# 启动 WebP 处理服务
+docker run -d --name webp-processor \
+  --network char-art-network \
+  -p 8081:8081 \
   -v webp-processor-data:/app/data \
   -v webp-processor-logs:/app/logs \
-  -e PORT=5000 \
-  -e LOG_LEVEL=INFO \
-  -e DEBUG=False \
-  -e MAX_CONTENT_LENGTH=16777216 \
-  -e TEMP_FILE_TTL=3600 \
+  -e REDIS_HOST=redis \
+  -e JAVA_BACKEND_URL=http://localhost:8080 \
   webp-processor:latest
 ```
 
-这将以默认配置启动WebP处理服务，并将容器的5000端口映射到主机的8081端口。
+#### 带自定义配置运行
 
-### 验证容器服务状态
+```bash
+docker run -d --name webp-processor \
+  --network char-art-network \
+  -p 8081:8081 \
+  -v webp-processor-data:/app/data \
+  -v webp-processor-logs:/app/logs \
+  -e PORT=8081 \
+  -e LOG_LEVEL=DEBUG \
+  -e DEBUG=True \
+  -e MAX_CONTENT_LENGTH=20971520 \
+  -e REDIS_HOST=redis \
+  -e REDIS_PORT=6379 \
+  -e TEMP_FILE_TTL=7200 \
+  -e JAVA_BACKEND_URL=http://localhost:8080 \
+  webp-processor:latest
+```
+
+### 验证Docker Run服务状态
 
 ```bash
 # 查看容器状态
 docker ps
 
 # 查看容器日志
-docker logs webp-processor
-```
+docker logs -f webp-processor
 
-服务启动后，可以通过 `http://localhost:8081/api/health` 检查服务健康状态。
+# 测试健康检查
+curl -f http://localhost:8081/api/health
+```
 
 ## 配置参数
 
-### 环境变量
+### 配置文件变量
 
-无论是使用 Docker Compose 还是 docker run 命令，都可以通过环境变量自定义以下配置：
+| 变量名称                       | 变量中文名       | 变量作用          | 变量默认值                          |
+|----------------------------|-------------|---------------|--------------------------------|
+| `PORT`                     | 服务端口        | WebP 处理服务监听端口 | `8081`                         |
+| `LOG_LEVEL`                | 日志级别        | 应用日志输出级别      | `INFO`                         |
+| `LOG_FILE`                 | 日志文件路径      | 日志文件存储路径      | `/app/logs/webp-processor.log` |
+| `TIMEZONE`                 | 时区设置        | 应用程序时区配置      | `Asia/Shanghai`                |
+| `TEMP_FILE_TTL`            | 临时文件保留时间    | 临时文件自动清理时间（秒） | `3600`                         |
+| `TEMP_DIR`                 | 临时文件目录      | 临时文件存储目录      | `/app/data`                    |
+| `DEBUG`                    | 调试模式        | 是否启用调试模式      | `False`                        |
+| `MAX_CONTENT_LENGTH`       | 最大上传文件大小    | 请求内容最大长度（字节）  | `10485760`                     |
+| `REDIS_HOST`               | Redis 主机地址  | Redis 服务器地址   | `localhost`                    |
+| `REDIS_PORT`               | Redis 端口    | Redis 服务器端口   | `6379`                         |
+| `REDIS_DB`                 | Redis 数据库索引 | Redis 数据库编号   | `0`                            |
+| `REDIS_PASSWORD`           | Redis 密码    | Redis 服务器密码   | `None`                         |
+| `REDIS_CHANNEL`            | Redis 频道    | SSE 消息推送频道名称  | `sse`                          |
+| `PROGRESS_UPDATE_INTERVAL` | 进度更新间隔      | 进度信息更新频率（秒）   | `0.5`                          |
+| `JAVA_BACKEND_URL`         | 后端服务地址      | Java 后端服务 URL | `http://localhost:8080`        |
 
-#### 服务器配置
+#### 使用示例
 
-- `PORT`: 服务监听端口 (默认: 5000)
-
-  例如，如果您想让服务监听在8000端口，则应设置 `PORT=8000`
-
-  ```bash
-  docker run -d --name webp-processor -p 8081:8000 -e PORT=8000 webp-processor:latest
-  ```
-
-#### 日志配置
-
-- `LOG_LEVEL`: 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL) (默认: INFO)
-
-  例如，如果您想启用调试日志，则应设置 `LOG_LEVEL=DEBUG`
-
-  ```bash
-  docker run -d --name webp-processor -p 8081:5000 -e LOG_LEVEL=DEBUG webp-processor:latest
-  ```
-
-#### 应用配置
-
-- `DEBUG`: 调试模式 (默认: False)
-
-  在调试模式下，应用会提供更详细的错误信息，但不建议在生产环境中启用
-
-  ```bash
-  docker run -d --name webp-processor -p 8081:5000 -e DEBUG=True webp-processor:latest
-  ```
-
-- `MAX_CONTENT_LENGTH`: 最大上传文件大小（字节） (默认: 16777216，即16MB)
-
-  例如，如果您需要处理更大的文件，可以将此值设置为32MB
-
-  ```bash
-  docker run -d --name webp-processor -p 8081:5000 -e MAX_CONTENT_LENGTH=33554432 webp-processor:latest
-  ```
-
-- `TEMP_FILE_TTL`: 临时文件保留时间（秒） (默认: 3600，即1小时)
-
-  例如，如果您想将临时文件保留时间延长到2小时，则应设置 `TEMP_FILE_TTL=7200`
-
-  ```bash
-  docker run -d --name webp-processor -p 8081:5000 -e TEMP_FILE_TTL=7200 webp-processor:latest
-  ```
-
-## 数据持久化
-
-WebP处理服务使用两个数据卷来持久化数据：
-
-- `webp-processor-data`: 用于存储临时文件，挂载到容器的 `/app/data` 目录
-- `webp-processor-logs`: 用于存储日志文件，挂载到容器的 `/app/logs` 目录
-
-使用Docker Compose时，这些卷会自动创建：
+**Docker Compose 配置示例：**
 
 ```yaml
-volumes:
-  webp-processor-data:
-  webp-processor-logs:
+services:
+  webp-processor:
+    environment:
+      - PORT=8081
+      - LOG_LEVEL=INFO
+      - DEBUG=False
+      - MAX_CONTENT_LENGTH=10485760
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TEMP_FILE_TTL=3600
+      - JAVA_BACKEND_URL=http://localhost:8080
 ```
 
-使用Docker命令时，需要手动指定卷挂载：
+**Docker Run 配置示例：**
 
 ```bash
 docker run -d --name webp-processor \
-  -p 8081:5000 \
-  -v webp-processor-data:/app/data \
-  -v webp-processor-logs:/app/logs \
+  -e PORT=8081 \
+  -e LOG_LEVEL=INFO \
+  -e DEBUG=False \
+  -e MAX_CONTENT_LENGTH=10485760 \
+  -e REDIS_HOST=redis \
+  -e TEMP_FILE_TTL=3600 \
   webp-processor:latest
 ```
 
-## 与后端服务集成
+### 卷
 
-要将WebP处理服务与字符画转换器后端服务集成，可以使用项目根目录下的`docker-compose.yml`文件，该文件配置了完整的服务栈，包括后端服务、WebP处理服务和Redis：
+| 卷名称                   | 容器路径        | 用途          | 说明                 |
+|-----------------------|-------------|-------------|--------------------|
+| `webp-processor-data` | `/app/data` | 临时文件存储      | 存储上传的图片和处理过程中的临时文件 |
+| `webp-processor-logs` | `/app/logs` | 日志文件存储      | 存储应用程序日志文件         |
+| `redis-data`          | `/data`     | Redis 数据持久化 | 存储 Redis 数据库文件     |
 
-```bash
-# 在项目根目录下执行
-docker-compose up -d
+#### 卷使用示例
+
+**Docker Compose 卷配置：**
+
+```yaml
+services:
+  webp-processor:
+    volumes:
+      - webp-processor-data:/app/data
+      - webp-processor-logs:/app/logs
+      - ./config:/app/config:ro  # 只读配置文件
+
+volumes:
+  webp-processor-data:
+    driver: local
+  webp-processor-logs:
+    driver: local
 ```
 
-或者，如果您使用Docker命令部署，可以创建一个共享网络，并将所有服务连接到该网络：
+**Docker Run 卷配置：**
 
 ```bash
-# 创建Docker网络
-docker network create char-art-network
+# 使用命名卷
+docker run -d --name webp-processor \
+  -v webp-processor-data:/app/data \
+  -v webp-processor-logs:/app/logs \
+  webp-processor:latest
 
-# 启动Redis服务
-docker run -d --name redis \
+# 使用绑定挂载
+docker run -d --name webp-processor \
+  -v /host/path/data:/app/data \
+  -v /host/path/logs:/app/logs \
+  webp-processor:latest
+```
+
+### 网络
+
+| 网络名称               | 类型     | 用途    | 说明                       |
+|--------------------|--------|-------|--------------------------|
+| `char-art-network` | bridge | 服务间通信 | 连接 WebP 处理服务、Redis 和后端服务 |
+| `default`          | bridge | 默认网络  | Docker Compose 创建的默认网络   |
+
+#### 网络使用示例
+
+**Docker Compose 网络配置：**
+
+```yaml
+services:
+  webp-processor:
+    networks:
+      - char-art-network
+      - external-network
+
+networks:
+  char-art-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  external-network:
+    external: true
+```
+
+**Docker Run 网络配置：**
+
+```bash
+# 创建自定义网络
+docker network create --driver bridge \
+  --subnet=172.20.0.0/16 \
+  char-art-network
+
+# 连接到网络
+docker run -d --name webp-processor \
   --network char-art-network \
-  -v redis-data:/data \
-  redis:6.2-alpine redis-server --appendonly yes
+  --ip 172.20.0.10 \
+  webp-processor:latest
+```
+
+## 与其他服务集成
+
+### 与后端服务集成
+
+WebP处理服务需要与后端服务集成，为后端提供WebP动图处理功能支持。
+
+#### 使用Docker Compose集成
+
+在项目根目录下的 `docker-compose.yml` 文件中配置：
+
+```yaml
+services:
+  webp-processor:
+    build: ./python_webp_processor
+    container_name: webp-processor
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JAVA_BACKEND_URL=http://char-art-backend:8080
+    volumes:
+      - webp-processor-data:/app/data
+      - webp-processor-logs:/app/logs
+    networks:
+      - char-art-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  char-art-backend:
+    build: ./backend
+    container_name: char-art-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_HOST=redis
+      - WEBP_PROCESSOR_URL=http://webp-processor:8081
+      - WEBP_PROCESSOR_TIMEOUT=30000
+    volumes:
+      - char-art-data:/app/data
+      - char-art-logs:/app/logs
+    networks:
+      - char-art-network
+    depends_on:
+      - redis
+      - webp-processor
+```
+
+#### 使用Docker网络集成
+
+```bash
+# 创建共享网络
+docker network create char-art-network
 
 # 启动WebP处理服务
 docker run -d --name webp-processor \
   --network char-art-network \
-  -p 8081:5000 \
-  -v webp-processor-data:/app/data \
-  -v webp-processor-logs:/app/logs \
+  -p 8081:8081 \
+  -e REDIS_HOST=redis \
+  -e REDIS_PORT=6379 \
+  -e JAVA_BACKEND_URL=http://char-art-backend:8080 \
   webp-processor:latest
 
 # 启动后端服务
@@ -243,90 +404,349 @@ docker run -d --name char-art-backend \
   --network char-art-network \
   -p 8080:8080 \
   -e REDIS_HOST=redis \
-  -e WEBP_PROCESSOR_URL=http://webp-processor:5000 \
-  -v char-art-data:/app/data \
-  -v char-art-logs:/app/logs \
+  -e WEBP_PROCESSOR_URL=http://webp-processor:8081 \
   char-art-backend:latest
+```
+
+### 与前端服务集成
+
+WebP处理服务通过后端服务间接为前端提供WebP动图处理功能。
+
+#### 使用Docker Compose方式集成
+
+```yaml
+services:
+  char-art-frontend:
+    build: ./frontend
+    container_name: char-art-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://char-art-backend:8080
+    networks:
+      - char-art-network
+    depends_on:
+      - char-art-backend
+
+  webp-processor:
+    environment:
+      - JAVA_BACKEND_URL=http://char-art-backend:8080
+    depends_on:
+      - char-art-backend
+```
+
+#### 使用Docker网络方式集成
+
+```bash
+# 启动前端服务
+docker run -d --name char-art-frontend \
+  --network char-art-network \
+  -p 80:80 \
+  -e VITE_API_URL=http://char-art-backend:8080 \
+  char-art-frontend:latest
+
+# WebP处理服务通过后端间接为前端提供服务
+# 无需直接配置前端与WebP处理服务的连接
+```
+
+### 与Redis服务集成
+
+WebP处理服务使用Redis进行任务队列管理和进度通知。
+
+```yaml
+services:
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - char-art-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  webp-processor:
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      - REDIS_CHANNEL=sse
+    depends_on:
+      - redis
+```
+
+### 完整的服务集成示例
+
+```yaml
+version: '3.8'
+
+services:
+  char-art-frontend:
+    build: ./frontend
+    container_name: char-art-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://char-art-backend:8080
+      - VITE_BASE_PATH=/
+    volumes:
+      - char-art-frontend-logs:/var/log/nginx
+    networks:
+      - char-art-network
+    depends_on:
+      - char-art-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  char-art-backend:
+    build: ./backend
+    container_name: char-art-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WEBP_PROCESSOR_URL=http://webp-processor:8081
+      - WEBP_PROCESSOR_TIMEOUT=30000
+    volumes:
+      - char-art-data:/app/data
+      - char-art-logs:/app/logs
+    networks:
+      - char-art-network
+    depends_on:
+      - redis
+      - webp-processor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  webp-processor:
+    build: ./python_webp_processor
+    container_name: webp-processor
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      - REDIS_CHANNEL=sse
+      - JAVA_BACKEND_URL=http://char-art-backend:8080
+    volumes:
+      - webp-processor-data:/app/data
+      - webp-processor-logs:/app/logs
+    networks:
+      - char-art-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - char-art-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  char-art-data:
+    driver: local
+  char-art-logs:
+    driver: local
+  char-art-frontend-logs:
+    driver: local
+  webp-processor-data:
+    driver: local
+  webp-processor-logs:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  char-art-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 ```
 
 ## 自定义构建
 
 ### 修改Dockerfile
 
-如果需要自定义Docker镜像构建过程，可以修改 `Dockerfile`。例如，添加额外的依赖项：
+如果需要自定义 Docker 镜像构建过程，可以修改 `Dockerfile`：
 
 ```dockerfile
-# 在构建阶段安装额外的依赖项
-RUN pip install --no-cache-dir some-package
+# 添加额外的系统依赖
+RUN apt-get update && apt-get install -y \
+    additional-package \
+    imagemagick \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装额外的 Python 包
+RUN pip install --no-cache-dir \
+    additional-python-package \
+    pillow-simd
+
+# 设置自定义环境变量
+ENV CUSTOM_CONFIG_PATH=/app/config
+ENV PYTHONPATH=/app:$PYTHONPATH
 ```
 
 ### 修改启动脚本
 
-`docker-entrypoint.sh` 脚本用于在容器启动时配置环境变量。如果需要添加更多自定义配置，可以修改此脚本。
+`docker-entrypoint.sh` 脚本用于在容器启动时配置环境变量。如果需要添加更多自定义配置：
+
+```bash
+#!/bin/bash
+set -e
+
+# 添加自定义环境变量处理
+if [ ! -z "$CUSTOM_CONFIG" ]; then
+  sed -i "/^CUSTOM_CONFIG=/c\CUSTOM_CONFIG=$CUSTOM_CONFIG" "$ENV_FILE"
+fi
+
+# 添加自定义初始化逻辑
+if [ "$ENABLE_CUSTOM_INIT" = "true" ]; then
+  echo "Running custom initialization..."
+  python /app/scripts/custom_init.py
+fi
+
+# 设置文件权限
+chown -R app:app /app/data /app/logs
+
+# 启动应用
+exec python main.py
+```
 
 ## 常见问题
 
-### 1. 文件上传大小限制
+### 1. Redis连接问题
 
-如果遇到文件上传大小限制问题，可以增加 `MAX_CONTENT_LENGTH` 环境变量的值：
+**问题描述**: WebP 处理服务无法连接到 Redis
+
+**解决方案**:
 
 ```bash
+# 检查 Redis 服务状态
+docker logs redis
+
+# 测试 Redis 连接
+docker exec -it webp-processor redis-cli -h redis ping
+
+# 检查网络连接
+docker exec -it webp-processor ping redis
+
+# 验证环境变量
+docker exec -it webp-processor env | grep REDIS
+```
+
+### 2. 文件上传大小限制
+
+**问题描述**: 上传大文件时出现413错误
+
+**解决方案**:
+
+```bash
+# 增加文件大小限制
 docker run -d --name webp-processor \
-  -p 8081:5000 \
   -e MAX_CONTENT_LENGTH=33554432 \
   webp-processor:latest
-```
 
-或者在 `docker-compose.yml` 中设置：
-
-```yaml
-services:
-  webp-processor:
-    environment:
-      - MAX_CONTENT_LENGTH=33554432  # 32MB
-```
-
-### 2. 日志查看
-
-查看容器日志：
-
-```bash
-# 使用Docker Compose查看日志
-docker-compose logs -f webp-processor
-
-# 使用Docker命令查看日志
-docker logs -f webp-processor
-
-# 查看最近100行日志
-docker logs --tail=100 webp-processor
-```
-
-或者直接查看日志文件（如果挂载了日志卷）：
-
-```bash
-docker exec -it webp-processor ls -la /app/logs
-docker exec -it webp-processor cat /app/logs/your-log-file.log
+# 或在 docker-compose.yml 中配置
+environment:
+  - MAX_CONTENT_LENGTH=33554432  # 32MB
 ```
 
 ### 3. 临时文件清理
 
-临时文件会根据 `TEMP_FILE_TTL` 设置的时间自动清理。如果需要手动清理，可以执行：
+**问题描述**: 临时文件占用过多磁盘空间
+
+**解决方案**:
 
 ```bash
+# 手动清理临时文件
 docker exec -it webp-processor rm -rf /app/data/*
+
+# 调整清理间隔
+docker run -d --name webp-processor \
+  -e TEMP_FILE_TTL=1800 \
+  webp-processor:latest
+
+# 手动执行清理脚本
+docker exec -it webp-processor python -c "from utils.utils import cleanup_temp_files; cleanup_temp_files()"
 ```
 
 ### 4. 健康检查失败
 
-如果健康检查失败，可能是服务未正常启动。检查日志：
+**问题描述**: 容器健康检查持续失败
+
+**解决方案**:
 
 ```bash
+# 查看容器状态
+docker ps -a
+
+# 查看详细日志
 docker logs webp-processor
+
+# 手动测试健康检查端点
+curl -f http://localhost:8081/api/health
+
+# 进入容器检查
+docker exec -it webp-processor curl -f http://localhost:8081/api/health
 ```
 
-确保服务内部端口（默认5000）与容器暴露的端口匹配。如果您修改了 `PORT` 环境变量，请确保容器映射的端口也相应调整。
+### 5. 日志查看
 
-### 5. 停止和删除容器
+**问题描述**: 需要查看详细的应用日志
+
+**解决方案**:
+
+```bash
+# 查看容器日志
+docker logs -f webp-processor
+docker logs --tail=100 webp-processor
+
+# 查看应用日志文件
+docker exec -it webp-processor cat /app/logs/webp-processor.log
+docker exec -it webp-processor tail -f /app/logs/webp-processor.log
+
+# 启用调试模式
+docker run -d --name webp-processor \
+  -e DEBUG=True \
+  -e LOG_LEVEL=DEBUG \
+  webp-processor:latest
+```
+
+### 6. 停止和删除容器
+
+**问题描述**: 需要完全清理容器和相关资源
+
+**解决方案**:
 
 ```bash
 # 停止容器
@@ -334,4 +754,16 @@ docker stop webp-processor
 
 # 删除容器
 docker rm webp-processor
+
+# 删除镜像
+docker rmi webp-processor:latest
+
+# 清理未使用的卷
+docker volume prune
+
+# 清理未使用的网络
+docker network prune
+
+# 使用 Docker Compose 清理
+docker-compose down -v --rmi all
 ```
