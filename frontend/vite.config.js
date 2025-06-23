@@ -15,7 +15,7 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd())
-  
+
   // 获取环境变量中的BASE_PATH，如果未设置则默认为空字符串
   const basePath = env.VITE_BASE_PATH || '';
   // 获取环境变量API_URL，如果未设置则为http://localhost:8080
@@ -23,17 +23,20 @@ export default defineConfig(({ mode }) => {
   // 获取API基础路径，如果未设置则为/api
   const apiBasePath = env.VITE_API_BASE_PATH || '/api';
   // 获取开发服务器端口
-  const port = parseInt(env.VITE_PORT || '5173');
+  const port = parseInt(env.VITE_PORT || '5174');
   // 是否启用源码映射
   const sourcemap = env.VITE_SOURCEMAP === 'true';
-  
+  // 生产模式下实际API基础路径：/资源路径前缀/API基础路径
+  const actualApiBasePath =  basePath === '' ? apiBasePath : `/${basePath}${apiBasePath}`
+
   console.log(`当前模式: ${mode}`);
   console.log(`API URL: ${apiUrl}`);
   console.log(`API Base Path: ${apiBasePath}`);
   console.log(`Base Path: ${basePath}`);
   console.log(`Port: ${port}`);
   console.log(`Sourcemap: ${sourcemap}`);
-  
+  console.log(`actualApiBasePath: ${actualApiBasePath}`);
+
   return {
 
   /**
@@ -43,8 +46,8 @@ export default defineConfig(({ mode }) => {
   plugins: [
     vue(),                // 启用Vue 3支持
   ],
-  base: basePath ? `/${basePath}/` : '/',  // 设置资源基础路径
-  
+  base: basePath=== '' ? '/' : `/${basePath}/`,  // 设置资源基础路径
+
   /**
    * 开发服务器配置
    * @property {Object} server - 服务器选项
@@ -61,7 +64,7 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true, // 修改请求头中的Host为目标URL
         ws: true,
         rewrite: (path) => path,
-        
+
         /**
          * 代理配置函数
          * 自定义代理行为，特别是对SSE连接的处理
@@ -80,7 +83,7 @@ export default defineConfig(({ mode }) => {
               res.end(JSON.stringify({ error: 'Proxy Error', message: err.message }));
             }
           });
-          
+
           proxy.on('proxyReq', (proxyReq, req, res) => {
             console.log('代理请求:', req.url, '方法:', req.method);
             // 对于SSE请求，添加特殊处理
@@ -92,11 +95,11 @@ export default defineConfig(({ mode }) => {
               proxyReq.setHeader('Accept', 'text/event-stream');
             }
           });
-          
+
           // 添加响应拦截器，处理CORS和SSE相关的头部
           proxy.on('proxyRes', (proxyRes, req, res) => {
             console.log('代理响应:', req.url, '状态码:', proxyRes.statusCode);
-            
+
             if (req.url.includes('/progress/')) {
               console.log('处理SSE响应头');
               // SSE 相关头部
@@ -104,15 +107,15 @@ export default defineConfig(({ mode }) => {
               proxyRes.headers['Connection'] = 'keep-alive';
               proxyRes.headers['Content-Type'] = 'text/event-stream';
               proxyRes.headers['X-Accel-Buffering'] = 'no';
-              
+
               // CORS 相关头部
               proxyRes.headers['Access-Control-Allow-Origin'] = req.headers.origin || '*';
               proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
               proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
-              
+
               // 确保响应不被压缩，这可能会导致SSE连接问题
               delete proxyRes.headers['content-encoding'];
-              
+
               // 记录响应头信息，用于调试
               console.log('SSE响应头:', JSON.stringify(proxyRes.headers));
             }
@@ -121,7 +124,7 @@ export default defineConfig(({ mode }) => {
       }
     }
   },
-  
+
   /**
    * 路径解析配置
    * @property {Object} resolve - 路径解析选项
@@ -135,7 +138,7 @@ export default defineConfig(({ mode }) => {
       '@': path.resolve(__dirname, 'src')
     }
   },
-  
+
   /**
    * 构建配置
    * @property {Object} build - 构建选项
