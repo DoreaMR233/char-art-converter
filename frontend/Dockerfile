@@ -13,13 +13,15 @@ RUN npm install
 # 复制项目文件
 COPY . .
 
-# 确保.env文件存在
-RUN if [ ! -f .env ]; then \
-    echo "# 默认环境变量配置" > .env && \
-    echo "VITE_APP_TITLE=字符画转换器" >> .env && \
-    echo "VITE_APP_VERSION=0.0.1" >> .env && \
-    echo "VITE_API_BASE_PATH=/api" >> .env && \
-    echo "VITE_MAX_UPLOAD_SIZE=10" >> .env; \
+
+# 如果提供了VITE_BASE_PATH环境变量，则更新.env.production文件
+ARG VITE_BASE_PATH
+ARG BACKEND_HOST="http://localhost"
+ARG BACKEND_PORT=8080
+ARG API_URL="${BACKEND_HOST}:${BACKEND_PORT}"
+RUN if [ -f .env.production ]; then \
+    sed -i "/^VITE_BASE_PATH=/c\VITE_BASE_PATH=$VITE_BASE_PATH" .env.production; \
+    sed -i "/^VITE_API_URL=/c\VITE_API_URL=$API_URL" .env.production; \
     fi
 
 # 构建生产版本
@@ -32,6 +34,10 @@ FROM nginx:alpine
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# 复制环境变量文件
+COPY --from=builder /app/.env /app/.env
+COPY --from=builder /app/.env.production /app/.env.production
+
 # 复制自定义Nginx配置文件
 COPY nginx.conf /nginx.conf
 
@@ -40,6 +46,10 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 
 # 确保脚本可执行
 RUN chmod +x /docker-entrypoint.sh
+
+# 设置环境变量
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
 # 暴露端口
 EXPOSE 80
