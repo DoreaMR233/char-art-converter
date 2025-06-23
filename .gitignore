@@ -79,3 +79,9 @@ Thumbs.db
 # 项目特定文件
 *.tmp
 temp/
+.env.development
+.env.production3
+frontend/.env.development
+frontend/.env.production
+python_webp_processor/logs
+python_webp_processor/data
