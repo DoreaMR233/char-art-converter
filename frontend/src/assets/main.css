@@ -1,3 +1,7 @@
+/**
+ * 全局样式重置
+ * 清除所有元素的默认边距和内边距，设置统一的盒模型
+ */
 * {
   margin: 0;
   padding: 0;
@@ -5,110 +9,114 @@
 }
 
 /**
- * 全局样式 - 基础元素样式设置
- */
-
-/**
  * 页面主体样式
- * 设置基本字体、颜色和背景
+ * 设置全局字体、渐变背景和基础布局
  */
 body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: #2c3e50;
-  background: #f5f7fa;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #9ec5ffe8 0%, #b5a4c5 100%);
   min-height: 100vh;
-}
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
   padding: 20px;
 }
 
 /**
- * 标题样式
- * 页面主标题的样式设置
+ * 主标题样式
+ * 居中显示的白色标题，带有阴影效果
  */
-.title {
+h1 {
   text-align: center;
-  font-size: 2rem;
-  font-weight: 600;
-  margin-bottom: 2rem;
-  color: #409eff;
+  color: white;
+  margin-bottom: 30px;
+  font-size: 2.5rem;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
 }
 
 /**
- * 图像容器布局
- * 用于并排显示原始图像和转换后的图像
+ * 图片容器布局
+ * 使用Flexbox布局，支持响应式换行
  */
 .image-container {
   display: flex;
-  justify-content: space-between;
-  margin-top: 20px;
   gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  flex-wrap: wrap;
 }
 
 /**
- * 图像框样式
- * 单个图像显示区域的样式
+ * 图片框基础样式
+ * 白色背景的卡片式容器，带有圆角、阴影和悬停效果
  */
 .image-box {
   flex: 1;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  overflow: hidden;
-  position: relative;
+  min-width: 300px;
+  background: white;
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  transition: transform 0.3s ease;
 }
 
 /**
- * 图像框标题样式
- * 图像框顶部的标题栏样式
+ * 图片框标题样式
+ * 居中显示的深色标题
  */
-.image-box-title {
-  background-color: #f2f6fc;
-  padding: 10px;
+.image-box h2 {
   text-align: center;
-  font-weight: 500;
-  border-bottom: 1px solid #dcdfe6;
+  margin-bottom: 20px;
+  color: #333;
+  font-size: 1.5rem;
 }
 
 /**
- * 图像内容区域样式
- * 图像实际显示的容器样式，包含滚动和居中功能
+ * 图片内容区域样式
+ * 用于显示图片的容器，带有虚线边框和居中对齐
  */
 .image-content {
-  overflow: auto;
-  max-height: 500px;
-  min-height: 300px;
+  text-align: center;
+  min-height: 200px;
   display: flex;
-  justify-content: center;
   align-items: center;
-  padding: 10px;
+  justify-content: center;
+  border: 2px dashed #ddd;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  background: #f9f9f9;
 }
 
 /**
- * 按钮组样式
- * 操作按钮的布局容器
+ * 图片元素样式
+ * 限制图片最大尺寸并添加圆角和阴影
+ */
+.image-content img {
+  max-width: 100%;
+  /* max-height: 400px; */
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/**
+ * 按钮组布局样式
+ * 使用Flexbox居中排列按钮，支持换行
  */
 .button-group {
   display: flex;
-  justify-content: center;
-  margin-top: 20px;
   gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 /**
- * 选项组样式
- * 转换选项的布局容器
+ * 转换选项组样式
+ * 用于显示图片转换参数设置的容器，采用垂直布局
  */
 .options-group {
   display: flex;
-  justify-content: center;
-  margin-top: 20px;
-  gap: 20px;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
 }
