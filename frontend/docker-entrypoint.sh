@@ -99,5 +99,8 @@ if [ -f "/nginx.conf" ]; then
   echo "Nginx配置文件中的MAX_UPLOAD_SIZE已替换为: $MAX_UPLOAD_SIZE_VALUE"
 fi
 
+# 显示启动信息
+echo "启动Nginx服务器..."
+
 # 执行CMD命令（启动Nginx）
 exec "$@"

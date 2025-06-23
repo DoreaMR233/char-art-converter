@@ -157,5 +157,8 @@ echo "-------------------"
 grep -v "^#" "$CONFIG_FILE" | grep -v "^$"
 echo "-------------------"
 
+# 显示启动信息
+echo "启动Java后端..."
+
 # 启动应用 - 添加文件编码设置
 exec java -Djava.io.tmpdir=$DEFAULT_TEMP_PATH -Dfile.encoding=$LANG -Dsun.jnu.encoding=$LANG -jar /app/app.jar --spring.config.location=file:$CONFIG_FILE
