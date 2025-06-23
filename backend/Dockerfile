@@ -31,7 +31,7 @@ COPY --from=build /app/target/*.jar app.jar
 RUN apt-get clean && apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # 添加配置脚本
-COPY docker-entrypoint.sh /app/
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 # 设置默认环境变量
