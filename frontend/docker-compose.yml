@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # 此处变量会覆盖.env和.env.production中的变量
+        # 此处变量会覆盖.env和.env.production中的变量，为空时使用.env和.env.production中的变量
         # 资源路径前缀，可选，不填写则默认为空，填写时不要带上前后斜杠
         - VITE_BASE_PATH=
         # 后端主机，可选，不填写则默认为http://localhost，填写时带上http://
