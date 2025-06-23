@@ -185,6 +185,9 @@ public class WebpProcessorClient {
     public void listenToProgressStream(String oriTaskId,String webPTaskId, CountDownLatch connectionLatch) {
         if (oriTaskId == null || oriTaskId.isEmpty() || webPTaskId == null || webPTaskId.isEmpty()) {
             log.error("无法监听进度流：任务ID为空");
+            if (connectionLatch != null) {
+                connectionLatch.countDown(); // 确保在错误情况下也释放锁
+            }
             return;
         }
         
@@ -192,7 +195,7 @@ public class WebpProcessorClient {
         log.info("开始监听Flask SSE进度流: {}", streamUrl);
         
         // 在新线程中执行，避免阻塞主线程
-        new Thread(() -> {
+        Thread progressThread = new Thread(() -> {
             // 创建OkHttpClient实例
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(maxTimeout * 2L, TimeUnit.MILLISECONDS)
@@ -304,7 +307,11 @@ public class WebpProcessorClient {
                 // 清除心跳计数
                 heartbeatCounters.remove(webPTaskId);
             }
-        }).start();
+        });
+        progressThread.setName("SSE-Progress-" + webPTaskId);
+        progressThread.setDaemon(true); // 设置为守护线程，避免阻止JVM退出
+        progressThread.start();
+        log.info("已启动进度监听线程: {}", progressThread.getName());
     }
     
     /**
@@ -373,7 +380,7 @@ public class WebpProcessorClient {
                 if (isDone) {
                     log.info("任务{}已完成，进度监听结束", webPTaskId);
                     // 关闭SSE连接
-                    closeProgressConnection(webPTaskId);
+//                    closeProgressConnection(webPTaskId);
                     return true;
                 }
             }
@@ -394,12 +401,25 @@ public class WebpProcessorClient {
             return;
         }
         
+        log.info("正在关闭任务{}的SSE连接", taskId);
+        
+        // 取消OkHttp调用
         Call call = taskCalls.get(taskId);
         if (call != null) {
             log.info("关闭任务{}的SSE连接", taskId);
             call.cancel();
             taskCalls.remove(taskId);
+        } else {
+            log.warn("任务{}没有活跃的OkHttp调用", taskId);
         }
+        
+        // 清除心跳计数
+        if (heartbeatCounters.containsKey(taskId)) {
+            log.info("清除任务{}的心跳计数", taskId);
+            heartbeatCounters.remove(taskId);
+        }
+        
+        log.info("任务{}的SSE连接已完全关闭", taskId);
     }
     
     /**
