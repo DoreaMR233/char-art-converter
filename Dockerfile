@@ -4,7 +4,7 @@
 FROM maven:3.8.4-openjdk-11-slim AS backend-build
 
 # 设置工作目录
-WORKDIR /app/backend
+WORKDIR /app
 
 # 复制pom.xml文件
 COPY backend/pom.xml .
@@ -22,7 +22,7 @@ RUN mvn package -DskipTests
 FROM node:18-alpine AS frontend-build
 
 # 设置工作目录
-WORKDIR /app/frontend
+WORKDIR /app
 
 # 复制包管理文件
 COPY frontend/package*.json ./
@@ -33,179 +33,189 @@ RUN npm install
 # 复制项目文件
 COPY frontend/ .
 
+# 确保.env文件存在
+# RUN if [ ! -f .env ]; then \
+#     echo "# 默认环境变量配置" > .env && \
+#     echo "VITE_APP_TITLE=字符画转换器" >> .env && \
+#     echo "VITE_APP_VERSION=1.0.0" >> .env && \
+#     echo "VITE_API_BASE_PATH=/api" >> .env && \
+#     echo "VITE_MAX_UPLOAD_SIZE=10" >> .env; \
+#     fi
+
+# 如果提供了VITE_BASE_PATH环境变量，则更新.env.production文件
+ARG VITE_BASE_PATH
+ARG BACKEND_PORT=8080
+ARG API_URL="http://127.0.0.1:${BACKEND_PORT}"
+RUN if [ -f .env.production ]; then \
+    sed -i "/^VITE_BASE_PATH=/c\VITE_BASE_PATH=$VITE_BASE_PATH" .env.production; \
+    sed -i "/^VITE_API_URL=/c\VITE_API_URL=$API_URL" .env.production; \
+    fi
+
 # 构建生产版本
 RUN npm run build
 
-# 阶段3: 构建Python WebP处理器
-FROM python:3.9-slim AS webp-processor-build
+# # 阶段3: 构建Python WebP处理器
+# FROM python:3.9-slim AS webp-processor-build
 
-WORKDIR /app/webp-processor
+# WORKDIR /app
 
-# 安装依赖
-COPY python_webp_processor/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# # 安装依赖
+# COPY python_webp_processor/requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
-COPY python_webp_processor/ .
+# 阶段4: 最终镜像 - 使用Ubuntu
+FROM ubuntu:20.04
 
-# 阶段4: 最终镜像 - 使用CentOS
-FROM centos:7
+# 避免交互式提示
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 配置apt以使用更可靠的镜像并添加重试逻辑
+RUN sed -i 's/http:\/\/security.ubuntu.com\/ubuntu/http:\/\/archive.ubuntu.com\/ubuntu/g' /etc/apt/sources.list \
+    && echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80retries
 
 # 安装必要的工具和依赖
-RUN yum -y update && yum -y install epel-release && \
-    yum -y install \
-    java-11-openjdk \
+# 添加Python 3.9 PPA源
+RUN apt-get update --option Acquire::Retries=5 \
+    && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update --option Acquire::Retries=5 \
+    && apt-get install -y --no-install-recommends \
+    openjdk-11-jre-headless \
     nginx \
-    python3 \
-    python3-pip \
-    nc \
+    python3.9 \
+    python3.9-distutils \
+    python3.9-dev \
+    netcat \
     curl \
-    redis \
+    tzdata \
+    redis-server \
+    redis-tools \
     fontconfig \
-    freetype \
-    && yum clean all
+    libfreetype6 \
+    supervisor \
+    wget \
+    && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
+    && python3.9 get-pip.py \
+    && rm get-pip.py \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.9 /usr/bin/python \
+    && ln -sf /usr/bin/python3.9 /usr/bin/python3
 
 # 设置工作目录
 WORKDIR /app
 
+# 设置默认环境变量
+ARG BACKEND_PORT=8080
+#前端、后端、Flask端文件夹位置
+ENV BACKEND_PATH=/app/backend \
+    FRONTEND_PATH=/app/frontend \
+    WEBP_PROCESSOR=/app/webp-processor \
+    TIMEZONE=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    # TEST环境变量无用，仅方便注解
+    TEST=TEST
+    
+
+# 前端、后端、Flask端日志文件夹和临时文件文件夹位置
+ENV BACKEND_LOG_FILE_PATH=$BACKEND_PATH/logs \
+    DEFAULT_TEMP_PATH=$BACKEND_PATH/data \
+    DEFAULT_CONFIG_PATH=$BACKEND_PATH/config \
+    WEBP_LOG_FILE_PATH=$WEBP_PROCESSOR/logs \
+    TEMP_DIR_PATH=$WEBP_PROCESSOR/data \
+    SUPERVISORD_LOG_PATH=/var/log \
+    SUPERVISORD_PID_PATH=/var/run \
+    SUPERVISORD_CONFIG_PATH=/etc/supervisor/conf.d
+
+# 前端、后端、Flask端的端口和路径配置
+ENV REDIS_HOST=localhost \
+    REDIS_PORT=6379 \
+    SERVER_PORT=${BACKEND_PORT} \
+    PORT=8081
+ENV WEBP_PROCESSOR_URL=http://localhost:$PORT \
+    JAVA_BACKEND_URL=http://localhost:${BACKEND_PORT}
+
+# ENV REDIS_DATABASE=0 \
+#     REDIS_TIMEOUT=60000 \
+#     CHAR_ART_CACHE_TTL=3600 \
+#     CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:" \
+#     WEBP_PROCESSOR_ENABLED=true \
+#     WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000 \
+#     WEBP_PROCESSOR_MAX_RETRIES=2 \
+#     MAX_FILE_SIZE=${MAX_UPLOAD_SIZE}MB \
+#     MAX_REQUEST_SIZE=${MAX_UPLOAD_SIZE}MB \
+#     BACKEND_LOG_LEVEL=INFO \
+#     # 后端日志配置
+#     LOG_FILE_MAX_SIZE=10MB \
+#     LOG_FILE_MAX_HISTORY=30 \
+#     LOG_CHARSET_CONSOLE=UTF-8 \
+#     LOG_CHARSET_FILE=UTF-8 \
+#     DATETIME_FORMAT=yyyy-MM-dd HH:mm:ss \
+#     # 字符画默认配置
+#     DEFAULT_DENSITY=medium \
+#     DEFAULT_COLOR_MODE=grayscale \
+#     # 前端配置
+#     VITE_BASE_PATH= \
+#     VITE_API_URL=http://127.0.0.1:$SERVER_PORT \
+#     VITE_API_BASE_PATH=/api \
+#     VITE_MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE} \
+#     # Python WebP处理器配置
+#     WEBP_PROCESSOR_LOG_LEVEL=INFO \
+#     DEBUG=False \
+#     MAX_CONTENT_LENGTH=${MAX_UPLOAD_SIZE}*1024*1024 \
+#     TEMP_FILE_TTL=3600 \
+#     REDIS_CHANNEL=sse \
+#     PROGRESS_UPDATE_INTERVAL=0.5
+
 # 创建必要的目录
-RUN mkdir -p /app/backend/config \
-    && mkdir -p /app/backend/data \
-    && mkdir -p /app/backend/logs \
-    && mkdir -p /app/webp-processor/data \
-    && mkdir -p /app/webp-processor/logs
+RUN mkdir -p $DEFAULT_CONFIG_PATH \
+    && mkdir -p $DEFAULT_TEMP_PATH \
+    && mkdir -p $BACKEND_LOG_FILE_PATH \
+    && mkdir -p $TEMP_DIR_PATH \
+    && mkdir -p $WEBP_LOG_FILE_PATH \
+    && mkdir -p $FRONTEND_PATH
 
 # 复制后端构建产物
-COPY --from=backend-build /app/backend/target/*.jar /app/backend/app.jar
-COPY backend/src/main/resources/application.properties /app/backend/config/application.properties.template
+COPY --from=backend-build /app/target/*.jar $BACKEND_PATH/app.jar
+COPY backend/src/main/resources/application.properties $DEFAULT_CONFIG_PATH/application.properties.template
 
 # 复制前端构建产物
-COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
-COPY frontend/nginx.conf /etc/nginx/nginx.conf
+COPY --from=frontend-build /app/dist /usr/share/nginx/html
+COPY --from=frontend-build /app/.env $FRONTEND_PATH/.env
+COPY --from=frontend-build /app/.env.production $FRONTEND_PATH/.env.production
+COPY frontend/docker-entrypoint.sh $FRONTEND_PATH/docker-entrypoint.sh
+RUN chmod +x $FRONTEND_PATH/docker-entrypoint.sh
 
 # 复制Python WebP处理器
-COPY --from=webp-processor-build /app/webp-processor /app/webp-processor
-COPY python_webp_processor/gunicorn.conf.py /app/webp-processor/
+COPY python_webp_processor/ $WEBP_PROCESSOR/
+COPY python_webp_processor/docker-entrypoint.sh $WEBP_PROCESSOR/docker-entrypoint.sh
+COPY python_webp_processor/.env $WEBP_PROCESSOR/.env
+COPY python_webp_processor/.env  $WEBP_PROCESSOR/.env.template
+RUN chmod +x $WEBP_PROCESSOR/docker-entrypoint.sh
 
-# 创建启动脚本
-RUN echo '#!/bin/bash' > /app/start.sh && \
-    echo 'set -e' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# 创建必要的目录' >> /app/start.sh && \
-    echo 'mkdir -p /app/data' >> /app/start.sh && \
-    echo 'mkdir -p /app/logs' >> /app/start.sh && \
-    echo 'mkdir -p /app/backend/data' >> /app/start.sh && \
-    echo 'mkdir -p /app/backend/logs' >> /app/start.sh && \
-    echo 'mkdir -p /app/webp-processor/data' >> /app/start.sh && \
-    echo 'mkdir -p /app/webp-processor/logs' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# 启动Redis服务' >> /app/start.sh && \
-    echo 'redis-server --daemonize yes --appendonly yes' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# 配置后端应用' >> /app/start.sh && \
-    echo 'cp /app/backend/config/application.properties.template /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/spring.redis.host=.*/spring.redis.host=localhost/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/spring.redis.port=.*/spring.redis.port=6379/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/spring.redis.database=.*/spring.redis.database=${REDIS_DATABASE}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/spring.redis.timeout=.*/spring.redis.timeout=${REDIS_TIMEOUT}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/char-art.cache.ttl=.*/char-art.cache.ttl=${CHAR_ART_CACHE_TTL}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s|webp-processor.url=.*|webp-processor.url=http://localhost:5000|g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/webp-processor.enabled=.*/webp-processor.enabled=${WEBP_PROCESSOR_ENABLED}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/webp-processor.connection-timeout=.*/webp-processor.connection-timeout=${WEBP_PROCESSOR_CONNECTION_TIMEOUT}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/webp-processor.max-retries=.*/webp-processor.max-retries=${WEBP_PROCESSOR_MAX_RETRIES}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/server.port=.*/server.port=8080/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/spring.servlet.multipart.max-file-size=.*/spring.servlet.multipart.max-file-size=${MAX_FILE_SIZE}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/spring.servlet.multipart.max-request-size=.*/spring.servlet.multipart.max-request-size=${MAX_REQUEST_SIZE}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/logging.level.com.doreamr233.charartconverter=.*/logging.level.com.doreamr233.charartconverter=${LOG_LEVEL}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/logging.logback.rollingpolicy.max-file-size=.*/logging.logback.rollingpolicy.max-file-size=${LOG_FILE_MAX_SIZE}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/logging.logback.rollingpolicy.max-history=.*/logging.logback.rollingpolicy.max-history=${LOG_FILE_MAX_HISTORY}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/char-art.default-density=.*/char-art.default-density=${DEFAULT_DENSITY}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s/char-art.default-color-mode=.*/char-art.default-color-mode=${DEFAULT_COLOR_MODE}/g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo 'sed -i "s|java.io.tmpdir=.*|java.io.tmpdir=/app/data|g" /app/backend/config/application.properties' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# 配置WebP处理器' >> /app/start.sh && \
-    echo 'echo "# WebP处理服务环境配置" > /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "PORT=5000" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "LOG_LEVEL=${LOG_LEVEL}" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "TEMP_FILE_TTL=${TEMP_FILE_TTL}" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "DEBUG=${DEBUG}" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH}" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "TEMP_DIR=/app/webp-processor/data" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "GUNICORN_WORKERS=${GUNICORN_WORKERS}" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo 'echo "GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT}" >> /app/webp-processor/.env' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# 配置Nginx' >> /app/start.sh && \
-    echo 'cat > /etc/nginx/conf.d/default.conf << EOF' >> /app/start.sh && \
-    echo 'server {' >> /app/start.sh && \
-    echo '    client_max_body_size ${MAX_UPLOAD_SIZE}m;' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '    listen 80;' >> /app/start.sh && \
-    echo '    server_name localhost;' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '    location / {' >> /app/start.sh && \
-    echo '        root /usr/share/nginx/html;' >> /app/start.sh && \
-    echo '        index index.html index.htm;' >> /app/start.sh && \
-    echo '        try_files \$uri \$uri/ /index.html;' >> /app/start.sh && \
-    echo '    }' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '    location /api/ {' >> /app/start.sh && \
-    echo '        proxy_pass http://localhost:8080/api/;' >> /app/start.sh && \
-    echo '        proxy_set_header Host \$host;' >> /app/start.sh && \
-    echo '        proxy_set_header X-Real-IP \$remote_addr;' >> /app/start.sh && \
-    echo '        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' >> /app/start.sh && \
-    echo '        proxy_set_header X-Forwarded-Proto \$scheme;' >> /app/start.sh && \
-    echo '    }' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '    location /webp/ {' >> /app/start.sh && \
-    echo '        proxy_pass http://localhost:5000/api/;' >> /app/start.sh && \
-    echo '        proxy_set_header Host \$host;' >> /app/start.sh && \
-    echo '        proxy_set_header X-Real-IP \$remote_addr;' >> /app/start.sh && \
-    echo '        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' >> /app/start.sh && \
-    echo '        proxy_set_header X-Forwarded-Proto \$scheme;' >> /app/start.sh && \
-    echo '    }' >> /app/start.sh && \
-    echo '}' >> /app/start.sh && \
-    echo 'EOF' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# 启动服务' >> /app/start.sh && \
-    echo 'cd /app/webp-processor && python3 -c "from utils.utils import cleanup_temp_files; cleanup_temp_files()" && gunicorn --config gunicorn.conf.py wsgi:application &' >> /app/start.sh && \
-    echo 'cd /app/backend && java -jar app.jar --spring.config.location=file:/app/backend/config/application.properties &' >> /app/start.sh && \
-    echo 'nginx -g "daemon off;"' >> /app/start.sh && \
-    chmod +x /app/start.sh
+#复制Nginx配置文件模版
+COPY nginx.conf /nginx.conf
 
-# 设置默认环境变量
-ENV REDIS_DATABASE=0 \
-    REDIS_TIMEOUT=60000 \
-    CHAR_ART_CACHE_TTL=3600 \
-    CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:" \
-    WEBP_PROCESSOR_ENABLED=true \
-    WEBP_PROCESSOR_CONNECTION_TIMEOUT=600000 \
-    WEBP_PROCESSOR_MAX_RETRIES=2 \
-    MAX_FILE_SIZE=10MB \
-    MAX_REQUEST_SIZE=10MB \
-    MAX_UPLOAD_SIZE=10 \
-    LOG_LEVEL=INFO \
-    BASE_PATH="" \
-    # 后端日志配置
-    LOG_FILE_MAX_SIZE=10MB \
-    LOG_FILE_MAX_HISTORY=30 \
-    # 字符画默认配置
-    DEFAULT_DENSITY=medium \
-    DEFAULT_COLOR_MODE=grayscale \
-    # Python WebP处理器配置
-    DEBUG=False \
-    MAX_CONTENT_LENGTH=16777216 \
-    TEMP_FILE_TTL=3600 \
-    # Gunicorn配置
-    GUNICORN_WORKERS=4 \
-    GUNICORN_TIMEOUT=120 \
-    GUNICORN_MAX_REQUESTS=1000 \
-    GUNICORN_MAX_REQUESTS_JITTER=50
+# 安装依赖
+COPY python_webp_processor/requirements.txt $WEBP_PROCESSOR/requirements.txt
+RUN pip install --no-cache-dir -r $WEBP_PROCESSOR/requirements.txt
+
+# 复制启动脚本和supervisord配置文件
+COPY docker-start.sh /app/start.sh
+COPY supervisord.conf /app/supervisord.conf
+RUN chmod +x /app/start.sh
 
 # 暴露端口
 EXPOSE 80
 
 # 定义卷
-VOLUME ["/data", "/app/backend/data", "/app/backend/logs", "/app/webp-processor/data", "/app/webp-processor/logs"]
+VOLUME $DEFAULT_TEMP_PATH
+VOLUME $BACKEND_LOG_FILE_PATH
+VOLUME $TEMP_DIR_PATH
+VOLUME $WEBP_LOG_FILE_PATH
+
 
 # 设置入口点
 CMD ["/app/start.sh"]
