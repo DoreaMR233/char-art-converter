@@ -37,21 +37,21 @@
     <el-row class="options-row" justify="center">
       <el-col :xs="24" :sm="24" :md="20" :lg="18">
         <el-form :inline="true" class="char-art-form" justify="center">
-          <el-form-item label="色彩：">
+          <el-form-item label="色彩：" class="form-label">
             <el-radio-group v-model="colorMode" fill="#6cf" :disabled="isProcessing">
               <el-radio-button label="彩色" value="color" border></el-radio-button>
               <el-radio-button label="灰度" value="grayscale" border></el-radio-button>
             </el-radio-group>
           </el-form-item>
           
-          <el-form-item label="字符密度：">
+          <el-form-item label="字符密度：" class="form-label">
             <el-select v-model="charDensity" placeholder="字符密度" style="width: 100px" :disabled="isProcessing">
               <el-option label="低" value="low"></el-option>
               <el-option label="中" value="medium"></el-option>
               <el-option label="高" value="high"></el-option>
             </el-select>
           </el-form-item>
-          <el-form-item label="限制尺寸：">
+          <el-form-item label="限制尺寸：" class="form-label">
             <el-select v-model="limitSize" placeholder="是否限制尺寸" style="width: 100px" :disabled="isProcessing">
               <el-option label="是" :value="true"></el-option>
               <el-option label="否" :value="false"></el-option>
@@ -86,9 +86,11 @@
         :stroke-width="20" 
         :show-text="true"
         :status="processPercentage >= 100 ? 'success' : ''"
+        class="light-progress"
       />
       <div class="progress-info">
-        <p class="progress-stage">当前阶段: {{ progressStage }}</p>
+        <p class="progress-stage" v-if="progressStage.stage">当前阶段: {{ progressStage.stage.value }}</p>
+        <p class="progress-stage" v-if="progressStage.message">当前信息: {{ progressStage.message.value }}</p>
         <p v-if="totalPixels > 0" class="progress-pixels">
           处理像素: {{ currentPixel.toLocaleString() }} / {{ totalPixels.toLocaleString() }}
           <span class="pixel-percentage" v-if="totalPixels > 0">
@@ -142,55 +144,59 @@
 <script setup>
 /**
  * 字符画转换器主组件
- * 提供图片上传、转换、导出和进度监控功能
+ * 提供图片上传、字符画转换、结果导出和实时进度监控功能
+ * 支持多种图片格式和转换参数配置
  */
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElLoading, ElUpload } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
-import { convertImage, getCharText, subscribeToProgress, checkHealth } from './api'
+import { convertImage, getCharText, subscribeToProgress, checkHealth, getTempImage } from './api'
 
 /**
- * 状态变量 - 存储应用的各种状态
+ * 响应式状态变量
  */
-// 文件和图像相关
-const imageFile = ref(null)  // 上传的图片文件
-const imageUrl = ref('')    // 原始图片URL
-const imageUrlList = ref([])    // 原始图片URL(预览用)
-const charImageUrl = ref('') // 字符画图片URL
-const charImageUrlList = ref([])    // 字符画图片URL(预览用)
-const charText = ref('')    // 字符画文本
+// 文件和图像相关状态
+const imageFile = ref(null)  // 用户上传的原始图片文件
+const imageUrl = ref('')    // 原始图片的预览URL
+const imageUrlList = ref([])    // 原始图片URL列表，用于Element Plus图片预览
+const charImageUrl = ref('') // 生成的字符画图片URL
+const charImageUrlList = ref([])    // 字符画图片URL列表，用于Element Plus图片预览
+const charText = ref('')    // 生成的字符画文本内容
 
-// 转换参数
-const colorMode = ref('color') // 颜色模式：彩色或灰度
-const charDensity = ref('medium') // 字符密度：低、中、高
-const limitSize = ref(true)  // 是否限制输出尺寸
+// 转换参数配置
+const colorMode = ref('color') // 颜色模式：'color'(彩色) 或 'grayscale'(灰度)
+const charDensity = ref('medium') // 字符密度：'low'(低)、'medium'(中)、'high'(高)
+const limitSize = ref(true)  // 是否限制输出图片尺寸以提高性能
 
-// 处理状态
-const isProcessing = ref(false) // 是否正在处理
-const processPercentage = ref(0) // 处理进度百分比
-const usageDialogVisible = ref(false) // 使用说明对话框是否可见
+// 处理状态控制
+const isProcessing = ref(false) // 是否正在进行图片转换处理
+const processPercentage = ref(0) // 当前处理进度百分比(0-100)
+const usageDialogVisible = ref(false) // 使用说明对话框的显示状态
 
 /**
- * DOM引用 - 用于直接操作DOM元素
+ * DOM元素引用
  */
-const originalImageContainer = ref(null) // 原始图片容器
-const charImageContainer = ref(null) // 字符画图片容器
+const originalImageContainer = ref(null) // 原始图片显示容器的DOM引用
+const charImageContainer = ref(null) // 字符画图片显示容器的DOM引用
 
 /**
- * 进度信息 - 跟踪处理进度的详细信息
+ * 进度监控相关状态
  */
-const progressStage = ref('') // 当前处理阶段
-const currentPixel = ref(0)  // 当前处理的像素
-const totalPixels = ref(0)   // 总像素数
+const progressStage = {
+  stage: ref(''),
+  message: ref('')
+} // 当前处理阶段的详细信息
+const currentPixel = ref(0)  // 已处理的像素数量
+const totalPixels = ref(0)   // 图片总像素数量
 
 /**
- * 警告标志 - 用于显示特定状态的警告
+ * 状态标志
  */
-const isLargeImage = ref(false) // 是否为大图像（可能导致性能问题）
-const hasCharText = ref(false)  // 是否有可用的字符文本，控制导出为文本按钮的可用性
+const isLargeImage = ref(false) // 标识生成的字符画是否为大文件(>300MB)，影响显示方式
+const hasCharText = ref(false)  // 标识是否成功获取到字符画文本，控制文本导出按钮状态
 
 /**
- * 事件源变量 - 用于SSE连接
+ * 服务器发送事件(SSE)连接实例
  * @type {EventSource|null}
  */
 let eventSource = null
@@ -198,7 +204,8 @@ let eventSource = null
 
 
 /**
- * 计算属性 - 获取上传文件大小限制（MB）
+ * 计算属性：获取文件上传大小限制
+ * @returns {number} 文件上传大小限制，单位为MB
  */
 const maxUploadSize = computed(() => {
   // 从环境变量获取上传大小限制，默认为10MB
@@ -206,10 +213,10 @@ const maxUploadSize = computed(() => {
 })
 
 /**
- * 上传前检查文件
- * 验证文件类型和大小是否符合要求
- * @param {File} file - 要上传的文件
- * @returns {boolean|Promise<Error>} - 返回布尔值表示是否通过检查，或返回Promise.reject阻止上传
+ * 文件上传前的验证检查
+ * 验证文件类型和大小是否符合系统要求
+ * @param {File} file - 待验证的文件对象
+ * @returns {boolean} 验证通过返回true，验证失败返回false
  */
 const beforeUpload = (file) => {
   console.log(file)
@@ -232,9 +239,10 @@ const beforeUpload = (file) => {
 }
 
 /**
- * 处理文件变化
- * 当用户选择文件后处理上传的图片
+ * 处理文件选择变化事件
+ * 当用户通过上传组件选择新文件时触发，更新相关状态
  * @param {Object} file - Element Plus Upload组件的文件对象
+ * @param {File} file.raw - 原始文件对象
  */
 const handleFileChange = (file) => {
   if (!file || !file.raw) return
@@ -268,8 +276,8 @@ const handleFileChange = (file) => {
 }
 
 /**
- * 处理图片转换
- * 将上传的图片转换为字符画，并监控处理进度
+ * 启动图片转换处理
+ * 调用核心转换方法将图片转换为字符画
  * @async
  * @returns {Promise<void>}
  */
@@ -280,15 +288,15 @@ const processImage = async () => {
 
 
 /**
- * 原始的整体传输处理方法
- * 处理图片转换的主要逻辑，包括上传、处理和获取结果
+ * 图片转换核心处理方法
+ * 执行完整的图片转字符画流程：文件上传、进度监控、结果获取
  * @async
  * @returns {Promise<void>}
  */
 const processImageOriginal = async () => {
   isProcessing.value = true
   processPercentage.value = 0
-  progressStage.value = '准备处理'
+  progressStage.stage.value = '准备处理'
   
   try {
     if (!imageFile.value) {
@@ -314,16 +322,17 @@ const processImageOriginal = async () => {
       
       // 确保percentage是数字并更新进度条
       if (data.percentage !== undefined) {
-        processPercentage.value = data.percentage
+        processPercentage.value = parseFloat(data.percentage.toFixed(2));
         console.log('更新进度百分比:', data.percentage)
       }
       
       // 更新进度阶段
       if (data.stage) {
-        progressStage.value = data.stage
+        progressStage.stage.value = data.stage
         console.log('更新进度阶段:', data.stage)
-      } else if (data.message) {
-        progressStage.value = data.message
+      }
+      if (data.message) {
+        progressStage.message.value = data.message
         console.log('更新进度消息:', data.message)
       }
       
@@ -337,21 +346,27 @@ const processImageOriginal = async () => {
       // 处理连接状态更新
       if (data.connectionStatus) {
         console.log('连接状态更新:', data.connectionStatus)
-        
         // 根据连接状态更新UI
         switch (data.connectionStatus) {
           case 'reconnecting':
             // 显示重连中的提示
-            progressStage.value = `正在重新连接... ${data.message || ''}`
+            progressStage.stage.value = '重新连接'
+            progressStage.message.value = `正在重新连接... ${data.message || ''}`
             break
           case 'failed':
             // 显示连接失败的提示
-            progressStage.value = '连接失败，请刷新页面重试'
+            progressStage.stage.value = '连接失败'
+            progressStage.message.value = '连接失败，请刷新页面重试'
             break
           case 'error':
             // 显示连接错误的提示
-            progressStage.value = 'SSE连接错误，请检查网络连接'
+            progressStage.stage.value = 'SSE连接错误'
+            progressStage.message.value = 'SSE连接错误，请检查网络连接'
             break
+          case 'closed':
+            // 显示连接已关闭的提示
+            progressStage.stage.value = 'SSE超时'
+            progressStage.message.value = '由于服务器长时间为响应，已关闭SSE消息通知连接'
         }
       }
     })
@@ -362,21 +377,29 @@ const processImageOriginal = async () => {
       console.log('上传进度:', uploadPercentage)
       // 上传阶段占总进度的30%
       processPercentage.value = Math.floor(uploadPercentage * 0.3)
-      progressStage.value = '上传图片'
+      progressStage.stage.value = '上传图片'
+      progressStage.message.value = '上传图片'
     })
     
     console.log('请求完成，处理响应...')
-    // 获取响应头中的content-type
-    const contentType = response.headers['content-type']
-    console.log('响应头content-type:', contentType)
+    console.log('响应数据:', response.data)
+    
+    // 从响应中获取文件路径和内容类型
+    const { filePath, contentType } = response.data
+    console.log('文件路径:', filePath)
+    console.log('内容类型:', contentType)
+    
+    // 使用文件路径获取图片数据
+    console.log('获取图片数据...')
+    const imageResponse = await getTempImage(filePath, contentType)
     
     // 创建一个Blob对象
-    const blob = new Blob([response.data], { type: contentType })
+    const blob = new Blob([imageResponse.data], { type: contentType })
     
     // 记录响应数据大小和类型
-    const responseSize = response.data.size || 0
+    const responseSize = imageResponse.data.size || 0
     console.log('响应数据大小:', responseSize, '字节')
-    console.log('响应数据类型:', response.data.type)
+    console.log('响应数据类型:', imageResponse.data.type)
     
     // 检查响应大小是否超过300MB
     const MAX_SIZE = 300 * 1024 * 1024 // 300MB in bytes
@@ -434,7 +457,8 @@ const processImageOriginal = async () => {
     }
     
     processPercentage.value = 100
-    progressStage.value = '处理完成'
+    progressStage.stage.value = '处理完成'
+    progressStage.message.value = '处理完成'
     console.log('转换完成')
     ElMessage.success('转换完成')
     
@@ -445,7 +469,8 @@ const processImageOriginal = async () => {
       ? error.response.data.message
       : error.message || '未知错误'
     ElMessage.error('处理失败: ' + errorMessage)
-    progressStage.value = '处理失败'
+    progressStage.stage.value = '处理失败'
+    progressStage.message.value = '处理失败'
   } finally {
     // 确保关闭EventSource连接
     if (eventSource) {
@@ -458,8 +483,8 @@ const processImageOriginal = async () => {
 }
 
 /**
- * 导出为文本
- * 将字符画文本导出为.txt文件
+ * 导出字符画文本文件
+ * 将生成的字符画文本内容保存为.txt格式文件
  * @returns {void}
  */
 const exportAsText = () => {
@@ -492,8 +517,8 @@ const exportAsText = () => {
 }
 
 /**
- * 导出为图片
- * 将字符画图片导出为PNG或GIF文件
+ * 导出字符画图片文件
+ * 将生成的字符画图片保存为原格式文件(PNG/GIF/WEBP等)
  * @returns {void}
  */
 const exportAsImage = () => {
@@ -524,16 +549,18 @@ const exportAsImage = () => {
 }
 
 /**
- * 显示使用说明
- * 打开包含应用使用指南的对话框
+ * 显示使用说明对话框
+ * 打开包含应用功能介绍和操作指南的弹窗
+ * @returns {void}
  */
 const showUsageInfo = () => {
   usageDialogVisible.value = true
 }
 
 /**
- * 组件挂载时的操作
- * 在组件挂载到DOM后执行初始化逻辑
+ * 组件挂载生命周期钩子
+ * 组件挂载到DOM后执行初始化操作，包括后端服务健康检查
+ * @returns {void}
  */
 onMounted(() => {
   // 初始化滚动条
@@ -559,6 +586,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+
 .button-container {
   display: flex;
   justify-content: center;
@@ -593,6 +621,10 @@ onMounted(() => {
   justify-content: center;
   gap: 15px;
   height: 100%;
+  background-color: white;
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
 .char-art-form .el-form-item {
@@ -602,6 +634,32 @@ onMounted(() => {
 .char-art-form .el-form-item__label {
   font-weight: 500;
   color: #333;
+}
+
+.form-label {
+  margin-right: 5px;
+}
+
+.form-label :deep(.el-form-item__label) {
+  color: #333;
+  font-weight: 500;
+}
+
+.char-art-form .el-button {
+  transition: all 0.3s ease;
+}
+
+.char-art-form .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+
+
+.light-progress :deep(.el-progress__text) {
+  color: #ffffff !important;
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .char-art-form .el-radio-button__inner {
@@ -619,7 +677,7 @@ onMounted(() => {
 .progress-info {
   margin-top: 10px;
   text-align: center;
-  color: #606266;
+  color: #e9ecef;
 }
 
 .progress-stage {
@@ -637,7 +695,7 @@ onMounted(() => {
 }
 
 .pixel-percentage {
-  color: #409EFF;
+  color: #20578f;
   font-weight: 500;
 }
 
@@ -654,6 +712,16 @@ onMounted(() => {
   
   .options-row .el-form-item {
     margin-bottom: 10px;
+  }
+  
+  .char-art-form {
+    flex-direction: column;
+    padding: 15px 10px;
+  }
+  
+  .char-art-form .el-form-item {
+    width: 100%;
+    margin-right: 0;
   }
 }
 </style>
