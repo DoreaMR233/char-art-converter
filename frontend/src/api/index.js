@@ -166,7 +166,7 @@ export const getCharText = (filename) => {
  * @returns {Function} 取消订阅的清理函数
  */
 export const subscribeToProgress = (id, onMessage) => {
-  let eventSource = new EventSource(`${apiBasePath}/progress/${id}`)
+  let eventSource = new EventSource(`${apiFullBasePath}/progress/${id}`)
   
   /**
    * 连接打开时的处理
