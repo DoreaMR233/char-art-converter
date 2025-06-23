@@ -1,0 +1,114 @@
+# 版本控制系统
+.git
+.gitignore
+.gitattributes
+
+# IDE和编辑器文件
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Java相关
+*.class
+hs_err_pid*
+
+# Maven构建目录和文件 - 不排除，因为Dockerfile中使用了多阶段构建
+# target/
+# pom.xml.tag
+# pom.xml.releaseBackup
+# pom.xml.versionsBackup
+# pom.xml.next
+# release.properties
+# dependency-reduced-pom.xml
+# buildNumber.properties
+# .mvn/timing.properties
+
+# Node.js相关 - 不排除，因为Dockerfile中使用了多阶段构建
+# node_modules/
+# npm-debug.log
+# yarn-debug.log*
+# yarn-error.log*
+# .pnpm-debug.log*
+# .npm
+# .eslintcache
+# .node_repl_history
+
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境 - 这些不需要包含在Docker镜像中
+.env
+.venv
+env/
+venv/
+ENV/
+
+# 日志文件 - 这些会在容器中生成
+*.log
+logs/
+
+# 临时文件
+*.tmp
+temp/
+
+# 文档和其他非必要文件
+README.md
+LICENSE
+Docker.md
+*.md
+img/
+
+#指定忽略的内容
+python_webp_processor/Docker.md
+python_webp_processor/README.md
+
+python_webp_processor/logs
+python_webp_processor/.idea
+python_webp_processor/.vscode
+python_webp_processor/.venv
+
+# 不排除这些文件，因为它们在Dockerfile中被使用
+!docker-start.sh
+!backend/src/main/resources/application.properties
+!frontend/nginx.conf
+!frontend/docker-entrypoint.sh
+!python_webp_processor/docker-entrypoint.sh
+!python_webp_processor/.env
+!python_webp_processor/requirements.txt
+    
+# 确保子目录中的.dockerignore文件被忽略
+**/.dockerignore
