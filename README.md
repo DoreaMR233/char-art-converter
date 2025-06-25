@@ -46,13 +46,19 @@
 
 ![主界面](./img/image1.png)
 
-![转换过程](./img/image2.png)
+![导出选项](./img/image2.png)
 
-![字符画结果](./img/image3.png)
+![使用说明](./img/image3.png)
 
-![导出选项](./img/image4.png)
+![字符画转换过程](./img/image4.png)
 
-![GIF动图转换](./img/image5.gif)
+![彩色字符模式](./img/image5.png)
+
+![彩色背景模式](./img/image6.png)
+
+![灰度模式](./img/image7.png)
+
+![动图转换结果](./img/image8.gif)
 
 ## 项目结构
 
@@ -104,13 +110,6 @@ char-art-converter/
 │   ├── Dockerfile                # Docker镜像构建文件
 │   ├── main.py                   # 应用入口
 │   └── requirements.txt          # Python依赖
-│
-├── img/                          # 项目截图
-│   ├── image1.png                # 主界面截图
-│   ├── image2.png                # 转换过程截图
-│   ├── image3.png                # 字符画结果截图
-│   ├── image4.png                # 导出选项截图
-│   └── image5.gif                # GIF动图转换演示
 │
 ├── Docker.md                     # Docker部署详细文档
 ├── Dockerfile                    # 一体化Docker镜像构建文件
