@@ -6,6 +6,19 @@ FROM maven:3.8.4-openjdk-11-slim AS backend-build
 # 设置工作目录
 WORKDIR /app
 
+# 配置Maven使用阿里云镜像
+RUN mkdir -p /root/.m2 \
+    && echo '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">\n\
+    <mirrors>\n\
+        <mirror>\n\
+            <id>aliyunmaven</id>\n\
+            <mirrorOf>*</mirrorOf>\n\
+            <name>阿里云公共仓库</name>\n\
+            <url>https://maven.aliyun.com/repository/public</url>\n\
+        </mirror>\n\
+    </mirrors>\n\
+</settings>' > /root/.m2/settings.xml
+
 # 复制pom.xml文件
 COPY backend/pom.xml .
 
@@ -23,6 +36,9 @@ FROM node:18-alpine AS frontend-build
 
 # 设置工作目录
 WORKDIR /app
+
+# 配置npm使用淘宝镜像
+RUN npm config set registry https://registry.npmmirror.com
 
 # 复制包管理文件
 COPY frontend/package*.json ./
@@ -200,7 +216,7 @@ COPY nginx.conf /nginx.conf
 
 # 安装依赖
 COPY python_webp_processor/requirements.txt $WEBP_PROCESSOR/requirements.txt
-RUN pip install --no-cache-dir -r $WEBP_PROCESSOR/requirements.txt
+RUN pip install --no-cache-dir -r $WEBP_PROCESSOR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 复制启动脚本和supervisord配置文件
 COPY docker-start.sh /app/start.sh
