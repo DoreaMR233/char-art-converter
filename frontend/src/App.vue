@@ -39,7 +39,8 @@
         <el-form :inline="true" class="char-art-form" justify="center">
           <el-form-item label="色彩：" class="form-label">
             <el-radio-group v-model="colorMode" fill="#6cf" :disabled="isProcessing">
-              <el-radio-button label="彩色" value="color" border></el-radio-button>
+              <el-radio-button label="彩色字符" value="color" border></el-radio-button>
+              <el-radio-button label="彩色背景" value="colorBackground" border></el-radio-button>
               <el-radio-button label="灰度" value="grayscale" border></el-radio-button>
             </el-radio-group>
           </el-form-item>
@@ -129,11 +130,21 @@
       <div>
         <p>1. 点击"导入图片"按钮选择要转换的图片（仅支持JPG、PNG、JPEG、WEBP、GIF、BMP格式）</p>
         <!-- <p>1. 点击"导入图片"按钮选择要转换的图片</p> -->
-        <p>2. 选择色彩模式（彩色或灰度）</p>
-        <p>3. 选择字符密度（低/中/高）</p>
+        <p>2. 选择色彩模式：</p>
+        <ul>
+          <li><strong>彩色：</strong>生成彩色字符画，保留原图色彩信息</li>
+          <li><strong>彩色背景：</strong>生成带有彩色背景的字符画，字符颜色与背景相似但有足够对比度</li>
+          <li><strong>灰度：</strong>生成黑白字符画，仅保留明暗信息</li>
+        </ul>
+        <p>3. 选择字符密度：</p>
+        <ul>
+          <li><strong>低密度：</strong>使用较少的字符，生成速度快，细节较少</li>
+          <li><strong>中密度：</strong>平衡的字符数量，适合大多数图片</li>
+          <li><strong>高密度：</strong>使用更多字符，生成速度较慢，但能呈现更多细节</li>
+        </ul>
         <p>4. 点击"绘制按钮"开始转换</p>
         <p>5. 转换完成后，可以点击"导出为文本"或"导出为图片"保存结果</p>
-        <p>6. 支持静态图片和动态图片（GIF）的转换</p>
+        <p>6. 支持静态图片和动态图片（GIF、WEBP）的转换</p>
         <p>7. <strong>注意：</strong>当字符画图片大小超过300MB时，由于浏览器限制，图片将不会在界面上显示，但您仍可以正常下载其文本和图片</p>
         <p>8. <strong>注意：</strong>在生成WEBP格式动图的字符画时，导出的图片可能无法正常播放，建议使用其他格式的动图，或将WEBP格式动图转化成GIF格式后再进行生成</p>
       </div>
@@ -391,6 +402,14 @@ const processImageOriginal = async () => {
     
     // 使用文件路径获取图片数据
     console.log('获取图片数据...')
+    
+    // 显示加载提示
+    const loadingInstance = ElLoading.service({
+      lock: true,
+      text: '获取图片数据中...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    })
+    
     const imageResponse = await getTempImage(filePath, contentType)
     
     // 创建一个Blob对象
@@ -417,6 +436,8 @@ const processImageOriginal = async () => {
         showClose: true
       })
       console.log('大文件Blob URL已创建但不显示:', charImageUrl.value)
+      // 关闭加载提示
+      loadingInstance.close()
     } else {
       // 正常大小的图片，重置大图片标志并显示
       isLargeImage.value = false
@@ -424,8 +445,16 @@ const processImageOriginal = async () => {
       
       // 加载图片
       const img = new Image()
-      img.onload = () => console.log('图片加载成功')
-      img.onerror = (e) => console.error('图片加载失败:', e)
+      img.onload = () => {
+        console.log('图片加载成功')
+        // 关闭加载提示
+        loadingInstance.close()
+      }
+      img.onerror = (e) => {
+        console.error('图片加载失败:', e)
+        // 关闭加载提示
+        loadingInstance.close()
+      }
       img.src = charImageUrl.value
     }
     
@@ -471,6 +500,11 @@ const processImageOriginal = async () => {
     ElMessage.error('处理失败: ' + errorMessage)
     progressStage.stage.value = '处理失败'
     progressStage.message.value = '处理失败'
+    
+    // 确保关闭加载提示（如果存在）
+    if (typeof loadingInstance !== 'undefined' && loadingInstance) {
+      loadingInstance.close()
+    }
   } finally {
     // 确保关闭EventSource连接
     if (eventSource) {
