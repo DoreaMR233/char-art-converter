@@ -48,9 +48,12 @@ public class CharArtProcessor {
      * </p>
      */
     private static final String[] CHAR_SETS = {
-            " .:-=+*#%@", // 低密度
-            " .,:;i1tfLCG08@", // 中密度
-            " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$" // 高密度
+//            " .:-=+*#%@", // 低密度
+//            " .,:;i1tfLCG08@", // 中密度
+//            " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$" // 高密度
+            ".:-=+*#%@", // 低密度
+            ".,:;i1tfLCG08@", // 中密度
+            ".'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$" // 高密度
     };
 
     /**
@@ -419,11 +422,17 @@ public class CharArtProcessor {
         // 计算缩放比例（如果需要限制大小）
         double scale = 1.0;
         if (limitSize) {
-            // 限制最大字符数（宽度）
+            // 限制最大字符数（宽度和高度）
             int maxChars = 100;
-            if (width > maxChars) {
-                scale = (double) maxChars / width;
-            }
+            int maxLines = 100;
+            
+            // 计算宽度和高度的缩放比例
+            double scaleWidth = (width > maxChars) ? (double) maxChars / width : 1.0;
+            double scaleHeight = (height > maxLines) ? (double) maxLines / height : 1.0;
+            
+            // 使用较小的缩放比例，以确保宽度和高度都不超过限制
+            // 同时保持原图的长宽比例
+            scale = Math.min(scaleWidth, scaleHeight);
         }
 
         // 计算缩放后的尺寸
@@ -524,7 +533,7 @@ public class CharArtProcessor {
      * @param charText 字符画文本
      * @param originalWidth 原始宽度 (不再使用)
      * @param originalHeight 原始高度 (不再使用)
-     * @param colorMode 颜色模式 (grayscale, color)
+     * @param colorMode 颜色模式 (grayscale, color、"colorBackground)
      * @param originalImage 原始图片，用于彩色模式获取颜色信息
      * @param progressId 进度ID，用于更新进度
      * @param pixelOffset 像素偏移量，用于计算当前处理的像素位置
@@ -552,8 +561,8 @@ public class CharArtProcessor {
             // 设置基础字体大小 - 使用固定值以确保清晰可读
             int baseFontSize = 12; // 基础字体大小
 
-            // 设置字体 - 使用粗体以增强颜色显示效果
-            Font font = new Font(Font.MONOSPACED, "color".equalsIgnoreCase(colorMode) ? Font.BOLD : Font.PLAIN, baseFontSize);
+            // 设置等宽字体 - 使用粗体以增强颜色显示效果
+            Font font = new Font(Font.MONOSPACED, Font.BOLD, baseFontSize);
 
             // 创建临时图形上下文以获取字体度量
             BufferedImage tempImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
@@ -587,12 +596,8 @@ public class CharArtProcessor {
             fullG.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             fullG.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
 
-            // 设置背景 - 对于彩色模式使用深灰色背景以增强对比度
-            if ("color".equalsIgnoreCase(colorMode)) {
-                fullG.setColor(new Color(30, 30, 30)); // 深灰色背景
-            } else {
-                fullG.setColor(Color.WHITE); // 灰度模式保持白色背景
-            }
+            // 设置背景 - 使用白色背景以便彩色字符更加清晰可见
+            fullG.setColor(Color.WHITE);
             fullG.fillRect(0, 0, imageWidth, imageHeight);
 
             // 设置字体
@@ -604,6 +609,7 @@ public class CharArtProcessor {
 
             // 根据颜色模式绘制字符
             boolean isColorMode = "color".equalsIgnoreCase(colorMode);
+            boolean isColorBackgroundMode = "colorBackground".equalsIgnoreCase(colorMode);
 
             // 计算总字符数用于进度更新
             int totalChars = 0;
@@ -627,7 +633,11 @@ public class CharArtProcessor {
                         int x = startX + j * charWidth;
                         int y = startY + i * lineHeight;
 
-                        if (isColorMode && originalImage != null) {
+                        // 获取原图对应位置的颜色（用于彩色模式）
+                        Color pixelColor = null;
+                        Color enhancedColor = null;
+                        
+                        if ((isColorMode || isColorBackgroundMode) && originalImage != null) {
                             // 彩色模式：从原图获取对应位置的颜色
                             // 计算原图中对应的坐标 - 按比例映射
                             int origX = 0;
@@ -639,7 +649,7 @@ public class CharArtProcessor {
                             }
 
                             // 获取原始颜色
-                            Color pixelColor = new Color(originalImage.getRGB(origX, origY));
+                            pixelColor = new Color(originalImage.getRGB(origX, origY));
 
                             // 增强颜色饱和度和亮度
                             float[] hsb = Color.RGBtoHSB(pixelColor.getRed(), pixelColor.getGreen(), pixelColor.getBlue(), null);
@@ -648,22 +658,64 @@ public class CharArtProcessor {
                             // 确保亮度适中，不会太暗或太亮
                             hsb[2] = Math.max(0.3f, Math.min(0.9f, hsb[2] * 1.2f));
 
-                            Color enhancedColor = Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
-                            fullG.setColor(enhancedColor);
+                            enhancedColor = Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
+                            
+                            if (isColorMode) {
+                                // 彩色字符模式：设置字符颜色
+                                fullG.setColor(enhancedColor);
+                            }
                         } else {
                             // 灰度模式：使用黑色
                             fullG.setColor(Color.BLACK);
                         }
 
-                        if (isColorMode) { // 对于彩色模式的所有字符（包括空格）
-                            // 先绘制背景色块
-                            fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
-
-                            // 对于非空格字符，绘制白色字符以增强可读性
+                        if (isColorMode) { // 彩色字符模式
+                            // 对于非空格字符，直接使用颜色绘制字符
                             if (c != ' ') {
-                                fullG.setColor(Color.WHITE);
+                                // 已经设置了颜色，直接绘制字符
                                 fullG.drawString(String.valueOf(c), x, y);
+                            } else {
+                                // 对于空格，绘制背景色块
+                                fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
                             }
+                        } else if (isColorBackgroundMode) { // 彩色背景模式
+                            // 先绘制彩色背景
+                            if (enhancedColor != null) {
+                                fullG.setColor(enhancedColor);
+                                fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
+                            }
+                            
+                            // 使用与背景颜色相似但有一定对比度的颜色绘制字符
+                            if (enhancedColor != null) {
+                                // 计算颜色亮度
+                                double brightness = (enhancedColor.getRed() * 0.299 + 
+                                                    enhancedColor.getGreen() * 0.587 + 
+                                                    enhancedColor.getBlue() * 0.114) / 255;
+                                
+                                // 创建一个与背景相似但有一定对比度的颜色
+                                Color charColor;
+                                if (brightness > 0.5) {
+                                    // 亮色背景使用稍暗的相似颜色
+                                    charColor = new Color(
+                                        Math.max(0, enhancedColor.getRed() - 80),
+                                        Math.max(0, enhancedColor.getGreen() - 80),
+                                        Math.max(0, enhancedColor.getBlue() - 80)
+                                    );
+                                } else {
+                                    // 暗色背景使用稍亮的相似颜色
+                                    charColor = new Color(
+                                        Math.min(255, enhancedColor.getRed() + 80),
+                                        Math.min(255, enhancedColor.getGreen() + 80),
+                                        Math.min(255, enhancedColor.getBlue() + 80)
+                                    );
+                                }
+                                fullG.setColor(charColor);
+                            } else {
+                                fullG.setColor(Color.BLACK);
+                            }
+                            
+                            // 绘制字符
+                            fullG.drawString(String.valueOf(c), x, y);
                         } else {
                             // 灰度模式：使用黑色字符
                             fullG.setColor(Color.BLACK);
@@ -699,7 +751,7 @@ public class CharArtProcessor {
      * @param charText 字符画文本
      * @param originalWidth 原始宽度 (不再使用)
      * @param originalHeight 原始高度 (不再使用)
-     * @param colorMode 颜色模式 (grayscale, color)
+     * @param colorMode 颜色模式 (grayscale, color, colorBackground)
      * @param originalImage 原始图片，用于彩色模式获取颜色信息
      * @param progressId 进度ID，用于更新进度
      * @param pixelOffset 像素偏移量，用于计算当前处理的像素位置
@@ -730,8 +782,8 @@ public class CharArtProcessor {
             // 设置基础字体大小 - 使用固定值以确保清晰可读
             int baseFontSize = 12; // 基础字体大小
 
-            // 设置字体 - 使用粗体以增强颜色显示效果
-            Font font = new Font(Font.MONOSPACED, "color".equalsIgnoreCase(colorMode) ? Font.BOLD : Font.PLAIN, baseFontSize);
+            // 设置等宽字体 - 使用粗体以增强颜色显示效果
+            Font font = new Font(Font.MONOSPACED, Font.BOLD, baseFontSize);
 
             // 创建临时图形上下文以获取字体度量
             BufferedImage tempImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
@@ -765,12 +817,8 @@ public class CharArtProcessor {
             fullG.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             fullG.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
 
-            // 设置背景 - 对于彩色模式使用深灰色背景以增强对比度
-            if ("color".equalsIgnoreCase(colorMode)) {
-                fullG.setColor(new Color(30, 30, 30)); // 深灰色背景
-            } else {
-                fullG.setColor(Color.WHITE); // 灰度模式保持白色背景
-            }
+            // 设置背景 - 使用白色背景以便彩色字符更加清晰可见
+            fullG.setColor(Color.WHITE);
             fullG.fillRect(0, 0, imageWidth, imageHeight);
 
             // 设置字体
@@ -782,6 +830,7 @@ public class CharArtProcessor {
 
             // 根据颜色模式绘制字符
             boolean isColorMode = "color".equalsIgnoreCase(colorMode);
+            boolean isColorBackgroundMode = "colorBackground".equalsIgnoreCase(colorMode);
 
             // 计算总字符数用于进度更新
             int totalChars = 0;
@@ -805,12 +854,12 @@ public class CharArtProcessor {
                         int x = startX + j * charWidth;
                         int y = startY + i * lineHeight;
 
-                        if (isColorMode && originalImage != null) {
-                            // 彩色模式：从原图获取对应位置的颜色
-                            // 计算原图中对应的坐标 - 按比例映射
-                            int origX = 0;
-                            int origY = 0;
-
+                        // 计算原图中对应的坐标 - 按比例映射
+                        int origX = 0;
+                        int origY = 0;
+                        Color enhancedColor = Color.BLACK;
+                        
+                        if ((isColorMode || isColorBackgroundMode) && originalImage != null) {
                             if (maxLineLength > 0 && lineCount > 0) {
                                 origX = Math.min((int)(j * 1.0 / maxLineLength * originalImage.getWidth()), originalImage.getWidth() - 1);
                                 origY = Math.min((int)(i * 1.0 / lineCount * originalImage.getHeight()), originalImage.getHeight() - 1);
@@ -826,20 +875,53 @@ public class CharArtProcessor {
                             // 确保亮度适中，不会太暗或太亮
                             hsb[2] = Math.max(0.3f, Math.min(0.9f, hsb[2] * 1.2f));
 
-                            Color enhancedColor = Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
-                            fullG.setColor(enhancedColor);
-                        } else {
-                            // 灰度模式：使用黑色
-                            fullG.setColor(Color.BLACK);
+                            enhancedColor = Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
                         }
-
-                        if (isColorMode) { // 对于彩色模式的所有字符（包括空格）
-                            // 先绘制背景色块
-                            fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
-
-                            // 对于非空格字符，绘制白色字符以增强可读性
+                        
+                        if (isColorMode) {
+                            // 彩色字符模式：字符使用原图颜色
+                            fullG.setColor(enhancedColor);
+                            
+                            // 对于非空格字符，直接使用颜色绘制字符
                             if (c != ' ') {
-                                fullG.setColor(Color.WHITE);
+                                // 已经设置了颜色，直接绘制字符
+                                fullG.drawString(String.valueOf(c), x, y);
+                            } else {
+                                // 对于空格，绘制背景色块
+                                fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
+                            }
+                        } else if (isColorBackgroundMode) {
+                            // 彩色背景模式：背景使用原图颜色，字符使用与背景相似但有对比度的颜色
+                            // 先绘制背景
+                            fullG.setColor(enhancedColor);
+                            fullG.fillRect(x, y - metrics.getAscent(), charWidth, lineHeight);
+                            
+                            // 使用与背景颜色相似但有一定对比度的颜色绘制字符
+                            double brightness = (enhancedColor.getRed() * 0.299 + 
+                                              enhancedColor.getGreen() * 0.587 + 
+                                              enhancedColor.getBlue() * 0.114) / 255;
+                            
+                            // 创建一个与背景相似但有一定对比度的颜色
+                            Color charColor;
+                            if (brightness > 0.5) {
+                                // 亮色背景使用稍暗的相似颜色
+                                charColor = new Color(
+                                    Math.max(0, enhancedColor.getRed() - 80),
+                                    Math.max(0, enhancedColor.getGreen() - 80),
+                                    Math.max(0, enhancedColor.getBlue() - 80)
+                                );
+                            } else {
+                                // 暗色背景使用稍亮的相似颜色
+                                charColor = new Color(
+                                    Math.min(255, enhancedColor.getRed() + 80),
+                                    Math.min(255, enhancedColor.getGreen() + 80),
+                                    Math.min(255, enhancedColor.getBlue() + 80)
+                                );
+                            }
+                            fullG.setColor(charColor);
+                            
+                            // 绘制字符（非空格）
+                            if (c != ' ') {
                                 fullG.drawString(String.valueOf(c), x, y);
                             }
                         } else {

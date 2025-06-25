@@ -73,7 +73,7 @@ public class CharArtController {
     private final static String defaultDensity = "medium";
 
     /**
-     * 默认颜色模式，可选值为"color"、"grayscale"
+     * 默认颜色模式，可选值为"color"、"colorBackground"、"grayscale"
      */
     @Value("${char-art.default-color-mode}")
     private final static String defaultColorMode = "grayscale";
@@ -88,7 +88,7 @@ public class CharArtController {
      *
      * @param imageFile 上传的图片文件
      * @param density 字符密度，可选值为"low"、"medium"、"high"，默认为"medium"
-     * @param colorMode 颜色模式，可选值为"color"、"grayscale"，默认为"grayscale"
+     * @param colorMode 颜色模式，可选值为"color"、"colorBackground"、"grayscale"，默认为"grayscale"
      * @param limitSize 是否限制字符画的最大尺寸，默认为true
      * @param progressIdParam 进度ID，用于跟踪转换进度，如果不提供则自动生成
      * @return 包含转换后图片数据的HTTP响应
