@@ -62,8 +62,13 @@ if [ ! -z "$REDIS_PORT" ]; then
   sed -i "/^REDIS_PORT=/c\REDIS_PORT=$REDIS_PORT" "$ENV_FILE"
 fi
 
-if [ ! -z "$REDIS_CHANNEL" ]; then
-  sed -i "/^REDIS_CHANNEL=/c\REDIS_CHANNEL=$REDIS_CHANNEL" "$ENV_FILE"
+if [ ! -z "$REDIS_DB" ]; then
+  sed -i "/^REDIS_DB=/c\REDIS_DB=$REDIS_DB" "$ENV_FILE"
+fi
+
+# 设置Redis密码
+if [ ! -z "$REDIS_PASSWORD" ]; then
+  sed -i "/^REDIS_PASSWORD=/c\REDIS_PASSWORD=$REDIS_PASSWORD" "$ENV_FILE"
 fi
 
 # 设置进度间隔时间

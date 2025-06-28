@@ -69,7 +69,7 @@ PORT = int(os.environ.get('PORT', '8081'))  # 应用监听端口，默认8081
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')  # Redis服务器地址，默认localhost
 REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))  # Redis服务器端口，默认6379
 REDIS_DB = int(os.environ.get('REDIS_DB', '0'))  # Redis数据库索引，默认0
-REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', None)  # Redis密码，默认无密码
+REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', '')  # Redis密码，默认为空
 
 # 进度更新间隔（秒）
 PROGRESS_UPDATE_INTERVAL = float(os.environ.get('PROGRESS_UPDATE_INTERVAL', '0.5'))  # 进度更新间隔时间，默认0.5秒

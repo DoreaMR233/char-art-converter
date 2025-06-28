@@ -18,7 +18,8 @@ services:
       # Redis设置
       # - REDIS_HOST=localhost
       # - REDIS_PORT=6379
-      # - REDIS_CHANNEL=sse
+      # - REDIS_DB=0
+      # - REDIS_PASSWORD=
       # 进度间隔时长
       # - PROGRESS_UPDATE_INTERVAL=0.5
       # Java后端服务URL

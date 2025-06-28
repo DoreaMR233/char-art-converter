@@ -208,8 +208,7 @@ curl -f http://localhost:8081/api/health
 | `REDIS_HOST`               | Redis 主机地址  | Redis 服务器地址   | `localhost`                    |
 | `REDIS_PORT`               | Redis 端口    | Redis 服务器端口   | `6379`                         |
 | `REDIS_DB`                 | Redis 数据库索引 | Redis 数据库编号   | `0`                            |
-| `REDIS_PASSWORD`           | Redis 密码    | Redis 服务器密码   | `None`                         |
-| `REDIS_CHANNEL`            | Redis 频道    | SSE 消息推送频道名称  | `sse`                          |
+| `REDIS_PASSWORD`           | Redis 密码    | Redis 服务器密码   | 空字符串                         |
 | `PROGRESS_UPDATE_INTERVAL` | 进度更新间隔      | 进度信息更新频率（秒）   | `0.5`                          |
 | `JAVA_BACKEND_URL`         | 后端服务地址      | Java 后端服务 URL | `http://localhost:8080`        |
 
@@ -227,6 +226,7 @@ services:
       - MAX_CONTENT_LENGTH=10485760
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=your_redis_password
       - TEMP_FILE_TTL=3600
       - JAVA_BACKEND_URL=http://localhost:8080
 ```
@@ -240,6 +240,7 @@ docker run -d --name webp-processor \
   -e DEBUG=False \
   -e MAX_CONTENT_LENGTH=10485760 \
   -e REDIS_HOST=redis \
+  -e REDIS_PASSWORD=your_redis_password \
   -e TEMP_FILE_TTL=3600 \
   webp-processor:latest
 ```
@@ -475,7 +476,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DATABASE=0
-      - REDIS_CHANNEL=sse
+      - REDIS_DB=0
     depends_on:
       - redis
 ```
@@ -540,7 +541,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DATABASE=0
-      - REDIS_CHANNEL=sse
+      - REDIS_DB=0
       - JAVA_BACKEND_URL=http://char-art-backend:8080
     volumes:
       - webp-processor-data:/app/data

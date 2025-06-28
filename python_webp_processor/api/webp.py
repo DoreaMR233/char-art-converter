@@ -2,59 +2,27 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, List
 from urllib.parse import quote
 
 import requests
 from PIL import Image, ImageSequence
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Path
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Path, BackgroundTasks
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 
-from api.progress import update_progress, close_progress_connection, create_progress
+from api.progress import update_progress, close_progress_connection, create_progress, send_event
 from config import TEMP_DIR, MAX_CONTENT_LENGTH, PROGRESS_UPDATE_INTERVAL, JAVA_BACKEND_URL
+from model.responseModel import AsyncTaskResponse, ProcessWebpResponse, CreateWebpResponse, ErrorResponse
 from utils.utils import cleanup_temp_files
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 响应模型
-class ProcessWebpResponse(BaseModel):
-    """处理WebP响应模型。
-    
-    Attributes:
-        frameCount (int): 动画帧数
-        delays (List[int]): 每帧延迟时间列表（毫秒）
-        frames (List[str]): 提取的帧文件路径列表
-        task_id (str): 任务唯一标识符
-    """
-    frameCount: int
-    delays: List[int]
-    frames: List[str]
-    task_id: str
-
-class CreateWebpResponse(BaseModel):
-    """创建WebP响应模型。
-    
-    Attributes:
-        webp (str): 生成的WebP动画文件路径
-        task_id (str): 任务唯一标识符
-    """
-    webp: str
-    task_id: str
-
-class ErrorResponse(BaseModel):
-    """错误响应模型。
-    
-    Attributes:
-        error (str): 错误信息描述
-        task_id (Optional[str]): 相关的任务标识符（如果有）
-    """
-    error: str
-    task_id: Optional[str] = None
 
 @router.get('/get-image/{file_path:path}')
 async def get_image(file_path: str = Path(..., description="图片文件的路径（相对于TEMP_DIR的路径）")):
@@ -124,8 +92,8 @@ async def get_image(file_path: str = Path(..., description="图片文件的路�
                     if os.path.exists(dir_path) and len(os.listdir(dir_path)) == 0:
                         os.rmdir(dir_path)
                         logger.info(f"空文件夹已删除: {dir_path}")
-            except Exception as e:
-                logger.error(f"删除文件或文件夹时出错: {str(e)}")
+            except Exception as ex:
+                logger.error(f"删除文件或文件夹时出错: {str(ex)}")
         
         # 注册后台任务
         response.background = cleanup_file
@@ -139,24 +107,23 @@ async def get_image(file_path: str = Path(..., description="图片文件的路�
         logger.error(f"获取图片时出错: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取图片时出错: {str(e)}")
 
-@router.post('/process-webp', response_model=ProcessWebpResponse)
+@router.post('/process-webp', response_model=AsyncTaskResponse)
 async def process_webp(
+    background_tasks: BackgroundTasks,
     image: UploadFile = File(..., description="WebP动图文件"),
     task_id: Optional[str] = Form(None, description="任务ID（可选）")
 ):
-    """处理WebP动图，提取帧并返回帧信息。
+    """异步处理WebP动图接口。
     
-    接收WebP动图文件，提取所有帧并保存为PNG格式，返回帧信息和延迟时间。
+    立即返回任务ID，在后台异步处理WebP文件，处理完成后通过SSE发送结果。
     
     Args:
+        background_tasks (BackgroundTasks): FastAPI后台任务
         image (UploadFile): 上传的WebP动图文件
         task_id (Optional[str]): 可选的任务ID，用于进度跟踪
         
     Returns:
-        ProcessWebpResponse: 包含帧数、延迟时间、帧文件路径和任务ID的响应对象
-        
-    Raises:
-        HTTPException: 当文件格式不正确、文件过大或处理失败时抛出
+        AsyncTaskResponse: 包含任务ID和状态的响应对象
     """
     try:
         # 检查文件名
@@ -182,27 +149,56 @@ async def process_webp(
         
         # 创建任务ID用于进度跟踪
         if not task_id:
-            # 如果请求中没有提供任务ID，则创建一个新的
             progress_response = await create_progress()
             task_id = progress_response.task_id
             logger.info(f"为WebP处理创建新的任务ID: {task_id}")
         else:
             logger.info(f"使用请求提供的任务ID: {task_id}")
         
+        # 在后台执行处理任务
+        background_tasks.add_task(_process_webp_sync, task_id, file_content, image.filename)
+        
+        return AsyncTaskResponse(
+            task_id=task_id,
+            message="WebP处理任务已启动，请通过SSE监听处理结果",
+            status="processing"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"启动WebP处理任务时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"启动任务失败: {str(e)}")
+
+async def _process_webp_sync(
+    task_id: str,
+    file_content: bytes,
+    filename: str
+):
+    """后台处理WebP动图，提取帧并通过SSE发送结果。
+    
+    Args:
+        task_id (str): 任务ID
+        file_content (bytes): WebP文件内容
+        filename (str): 文件名
+    """
+    try:
+        file_size = len(file_content)
+        
         # 更新进度：开始处理
         logger.info(f"任务 {task_id}: 开始处理WebP文件，大小: {file_size} 字节")
-        update_progress(task_id, 31, "WebP文件已接收，开始处理", "初始化")
+        await update_progress(task_id, 31.0, "WebP文件已接收，开始处理", "初始化")
         logger.debug(f"任务 {task_id}: 进度更新 31%")
         
         # 保存上传的文件到临时目录
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        temp_path = os.path.join(TEMP_DIR, f"{timestamp}_{image.filename}")
+        temp_path = os.path.join(TEMP_DIR, f"{timestamp}_{filename}")
         
         with open(temp_path, 'wb') as f:
             f.write(file_content)
         
         logger.info(f"任务 {task_id}: WebP文件已保存到临时路径: {temp_path}")
-        update_progress(task_id, 32, "WebP文件已保存，准备解析", "文件保存")
+        await update_progress(task_id, 32.0, "WebP文件已保存，准备解析", "文件保存")
         logger.debug(f"任务 {task_id}: 进度更新 32%")
         
         # 使用Pillow打开WebP文件
@@ -212,20 +208,20 @@ async def process_webp(
             logger.info(f"任务 {task_id}: WebP是否为动图: {is_animated}")
             if not is_animated:
                 logger.warning(f"任务 {task_id}: 上传的WebP不是动图")
-                update_progress(task_id, 100, "处理失败：上传的WebP不是动图", "错误", is_done=True)
+                await update_progress(task_id, 100.0, "处理失败：上传的WebP不是动图", "错误", is_done=True)
                 logger.info(f"任务 {task_id}: 关闭进度连接")
-                close_progress_connection(task_id)
+                await close_progress_connection(task_id, "ERROR_OCCURRED")
                 raise HTTPException(status_code=400, detail="上传的WebP不是动图")
             
             # 获取帧数
             frame_count = getattr(img, "n_frames", 0)
             if frame_count <= 0:
-                update_progress(task_id, 100, "处理失败：无法获取WebP帧数", "错误", is_done=True)
-                close_progress_connection(task_id)
+                await update_progress(task_id, 100.0, "处理失败：无法获取WebP帧数", "错误", is_done=True)
+                await close_progress_connection(task_id, "ERROR_OCCURRED")
                 raise HTTPException(status_code=400, detail="无法获取WebP帧数")
             
             logger.info(f"任务 {task_id}: WebP动图帧数: {frame_count}")
-            update_progress(task_id, 33, f"WebP动图帧数: {frame_count}，开始提取帧", "帧提取")
+            await update_progress(task_id, 33.0, f"WebP动图帧数: {frame_count}，开始提取帧", "帧提取")
             logger.debug(f"任务 {task_id}: 进度更新 33%")
             
             # 提取每一帧和延迟信息
@@ -240,8 +236,8 @@ async def process_webp(
             
             for i, frame in enumerate(ImageSequence.Iterator(img)):
                 # 计算当前进度
-                current_progress = 33 + ((i+1) / float(frame_count)) * (37 - 33)
-                update_progress(
+                current_progress = 33.0 + ((i+1) / float(frame_count)) * (37.0 - 33.0)
+                await update_progress(
                     task_id, 
                     current_progress, 
                     f"正在处理第 {i+1}/{frame_count} 帧",
@@ -277,65 +273,73 @@ async def process_webp(
                 await asyncio.sleep(PROGRESS_UPDATE_INTERVAL)
             
             # 更新进度：完成处理
-            update_progress(task_id, 37, "帧提取完成，准备返回结果", "完成", frame_count, frame_count)
+            await update_progress(task_id, 37.0, "帧提取完成，准备返回结果", "完成", frame_count, frame_count)
             logger.info(f"任务 {task_id}: 所有帧提取完成，进度更新 37%")
             
-            # 返回结果，使用帧路径
-            result = ProcessWebpResponse(
+            # 构建结果数据，使用 ProcessWebpResponse 模型
+            result_response = ProcessWebpResponse(
                 frameCount=frame_count,
                 delays=delays,
                 frames=frame_paths,
                 task_id=task_id
             )
-            
+
+            # 通过SSE发送处理结果
+            await send_event(task_id, "webp_result", result_response.model_dump())
+            logger.info(f"任务 {task_id}: WebP处理结果已通过SSE发送")
+
             # 最终进度更新
-            update_progress(task_id, 38, "处理完成，等待客户端获取图片", "完成", frame_count, frame_count, is_done=False)
+            await update_progress(task_id, 38.0, "处理完成，等待客户端获取图片", "完成", frame_count, frame_count, is_done=True)
             logger.info(f"任务 {task_id}: 最终进度更新 38%，等待客户端获取图片")
-            
-            # 确保SSE连接已关闭
-            logger.info(f"任务 {task_id}: WebP处理已完成，准备关闭SSE连接")
-            close_progress_connection(task_id)
-            logger.info(f"任务 {task_id}: SSE连接已关闭")
+
+            # 注意：不在这里关闭SSE连接，等待Java端处理完webp_result事件后再关闭
+            logger.info(f"任务 {task_id}: WebP处理结果已发送，等待Java端处理完成")
             
 
             
-    except HTTPException:
-        raise
     except Exception as e:
         error_details = traceback.format_exc()
         logger.error(f"处理WebP时出错: {str(e)}\n{error_details}")
-        # 如果有task_id，关闭SSE连接
-        if task_id:
-            update_progress(task_id, 100, f"处理失败：{str(e)}", "错误", is_done=True)
-            close_progress_connection(task_id)
-        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+        
+        # 构建错误结果数据，使用 ErrorResponse 模型
+        error_response = ErrorResponse(
+            error=str(e),
+            task_id=task_id
+        )
+        
+        # 通过SSE发送错误信息
+        await send_event(task_id, "webp_error", error_response.model_dump())
+        logger.info(f"任务 {task_id}: WebP处理错误已通过SSE发送")
+        
+        # 更新进度，但不关闭SSE连接
+        await update_progress(task_id, 100.0, f"处理失败：{str(e)}", "错误", is_done=False)
+        # 注意：不在这里关闭SSE连接，等待Java端处理完webp_error事件后再关闭
+        logger.info(f"WebP处理错误任务 {task_id} 已发送，等待Java端处理完成")
     finally:
         # 先清理临时文件
         cleanup_temp_files()
-    return result
 
-@router.post('/create-webp-animation', response_model=CreateWebpResponse)
+@router.post('/create-webp-animation', response_model=AsyncTaskResponse)
 async def create_webp_animation(
+    background_tasks: BackgroundTasks,
     frame_paths: str = Form(..., description="帧文件路径列表（JSON格式）"),
     delays: str = Form(..., description="延迟时间列表（JSON格式，毫秒）"),
     frame_format: str = Form(..., description="帧格式列表（JSON格式）"),
     task_id: Optional[str] = Form(None, description="任务ID（可选）")
 ):
-    """创建WebP动画。
+    """异步创建WebP动画接口。
     
-    根据提供的帧文件路径、延迟时间和格式信息，从Java后端获取帧图片并合成WebP动画。
+    立即返回任务ID，在后台异步创建WebP动画，处理完成后通过SSE发送结果。
     
     Args:
+        background_tasks (BackgroundTasks): FastAPI后台任务
         frame_paths (str): 帧文件路径列表的JSON字符串
         delays (str): 每帧延迟时间列表的JSON字符串（毫秒）
         frame_format (str): 帧格式列表的JSON字符串
         task_id (Optional[str]): 可选的任务ID，用于进度跟踪
         
     Returns:
-        CreateWebpResponse: 包含生成的WebP动画文件路径和任务ID的响应对象
-        
-    Raises:
-        HTTPException: 当参数解析失败、帧数量不匹配或处理失败时抛出
+        AsyncTaskResponse: 包含任务ID和状态的响应对象
     """
     try:
         # 解析帧文件路径数组
@@ -364,29 +368,110 @@ async def create_webp_animation(
         
         # 获取或创建任务ID
         if not task_id:
-            # 如果请求中没有提供任务ID，则创建一个新的
             progress_response = await create_progress()
             task_id = progress_response.task_id
-        
-        # 更新进度：开始处理
-        update_progress(task_id, 90, "开始处理WebP动画创建请求", "初始化")
+            logger.info(f"为WebP动画创建新的任务ID: {task_id}")
+        else:
+            logger.info(f"使用请求提供的任务ID: {task_id}")
         
         # 检查帧和延迟的数量是否匹配
         if len(frame_paths_list) != len(delays_list) or len(frame_paths_list) != len(frame_format_list):
             logger.warning(f"帧数量({len(frame_paths_list)})、延迟数量({len(delays_list)})、帧格式数量({len(frame_format_list)})不匹配")
-            update_progress(task_id, 100, "处理失败：帧数量、延迟数量、帧格式数量不匹配", "错误", is_done=True)
-            close_progress_connection(task_id)
             raise HTTPException(status_code=400, detail="帧数量、延迟数量、帧格式数量不匹配")
         
         # 检查是否有帧
         if len(frame_paths_list) == 0:
             logger.warning("没有提供帧")
-            update_progress(task_id, 100, "处理失败：没有提供帧", "错误", is_done=True)
-            close_progress_connection(task_id)
             raise HTTPException(status_code=400, detail="没有提供帧")
         
+        # 在后台执行处理任务
+        background_tasks.add_task(_create_webp_animation_sync, task_id, frame_paths_list, delays_list, frame_format_list)
+        
+        return AsyncTaskResponse(
+            task_id=task_id,
+            message="WebP动画创建任务已启动，请通过SSE监听处理结果",
+            status="processing"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"启动WebP动画创建任务时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"启动任务失败: {str(e)}")
+
+async def _save_webp_with_progress(frames_pil: List[Image.Image], output_path: str, delays_list: List[int], task_id: str):
+    """使用多线程保存WebP动画并定期更新进度。
+    
+    Args:
+        frames_pil (List[Image.Image]): PIL图像帧列表
+        output_path (str): 输出文件路径
+        delays_list (List[int]): 每帧延迟时间列表
+        task_id (str): 任务ID，用于进度更新
+    """
+    # 保存完成标志
+    save_completed = threading.Event()
+    save_error = None
+    
+    def save_webp():
+        """在线程中执行WebP保存操作。"""
+        nonlocal save_error
+        try:
+            frames_pil[0].save(
+                output_path,
+                format='WEBP',
+                append_images=frames_pil[1:],
+                save_all=True,
+                duration=delays_list,  # 每帧的持续时间（毫秒）
+                loop=0  # 0表示无限循环
+            )
+        except Exception as e:
+            save_error = e
+        finally:
+            save_completed.set()
+    
+    # 在线程池中启动保存任务
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(save_webp)
+        
+        # 定期更新进度直到保存完成
+        progress = 97.0
+        while not save_completed.is_set():
+            await asyncio.sleep(0.5)  # 每0.5秒更新一次进度
+            progress = min(98.0, progress + 0.01)  # 逐渐增加进度，但不超过98%
+            await update_progress(task_id, progress, "正在保存WebP动画文件...", "合成")
+        
+        # 等待线程完成并检查错误
+        future.result()  # 这会重新抛出线程中的异常（如果有的话）
+        
+        if save_error:
+            raise save_error
+        
+        # 保存完成，更新进度到98%
+        await update_progress(task_id, 98.0, "WebP动画保存完成", "合成")
+
+async def _create_webp_animation_sync(
+    task_id: str,
+    frame_paths_list: List[str],
+    delays_list: List[int],
+    frame_format_list: List[str]
+):
+    """后台处理WebP动画创建任务。
+    
+    根据提供的帧文件路径、延迟时间和格式信息，从Java后端获取帧图片并合成WebP动画，
+    处理完成后通过SSE发送结果。
+    
+    Args:
+        task_id (str): 任务ID，用于进度跟踪
+        frame_paths_list (List[str]): 帧文件路径列表
+        delays_list (List[int]): 每帧延迟时间列表（毫秒）
+        frame_format_list (List[str]): 帧格式列表
+    """
+    try:
+        # 更新进度：开始处理
+        await update_progress(task_id, 90.0, "开始处理WebP动画创建请求", "初始化")
+
         # 更新进度
-        update_progress(task_id, 91, f"准备处理 {len(frame_paths_list)} 帧图像", "准备")
+        await update_progress(task_id, 91.0, f"准备处理 {len(frame_paths_list)} 帧图像", "准备")
         
         # 创建临时目录来存储图片
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -394,7 +479,7 @@ async def create_webp_animation(
         os.makedirs(temp_dir, exist_ok=True)
         
         logger.info(f"创建临时目录: {temp_dir}")
-        update_progress(task_id, 92, "已创建临时目录，开始获取帧", "获取")
+        await update_progress(task_id, 92.0, "已创建临时目录，开始获取帧", "获取")
         
         # 从Java端获取每一帧并保存
         saved_frame_paths = []
@@ -402,8 +487,8 @@ async def create_webp_animation(
         for i, frame_path in enumerate(frame_paths_list):
             try:
                 # 更新进度
-                current_progress = 93 + ((i+1) / float(len(frame_paths_list))) * (96-93)  # 15-60%用于获取帧
-                update_progress(
+                current_progress = 93.0 + ((i+1) / float(len(frame_paths_list))) * (96.0-93.0)  # 93-96%用于获取帧
+                await update_progress(
                     task_id, 
                     current_progress, 
                     f"正在获取第 {i+1}/{len(frame_paths_list)} 帧",
@@ -416,17 +501,27 @@ async def create_webp_animation(
                 try:
                     # 检查文件路径是否有效
                     if not frame_path or not isinstance(frame_path, str):
-                        logger.warning(f"帧文件路径无效: {frame_path}")
-                        update_progress(task_id, 100, f"处理失败：第 {i+1} 帧路径无效", "错误", is_done=True)
-                        close_progress_connection(task_id)
-                        raise HTTPException(status_code=400, detail=f"第 {i+1} 帧路径无效")
+                        logger.warning(f"帧文件的路径无效: {frame_path}")
+                        error_data = {
+                            "error": f"第 {i+1} 帧文件的路径无效",
+                            "task_id": task_id
+                        }
+                        await send_event(task_id, "webp_error", error_data)
+                        await update_progress(task_id, 100.0, f"处理失败：第 {i+1} 帧路径无效", "错误", is_done=True)
+                        await close_progress_connection(task_id, "ERROR_OCCURRED")
+                        return
                     
                     # 检查文件类型
                     if not frame_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')) or not frame_format_list[i].lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                        logger.warning(f"帧文件不是支持的图片格式: {frame_path}")
-                        update_progress(task_id, 100, f"处理失败：第 {i+1} 帧不是支持的图片格式", "错误", is_done=True)
-                        close_progress_connection(task_id)
-                        raise HTTPException(status_code=400, detail=f"第 {i+1} 帧不是支持的图片格式")
+                        logger.warning(f"帧文件的格式不是支持的图片格式: {frame_path}")
+                        error_data = {
+                            "error": f"第 {i+1} 帧的格式不是支持的图片格式",
+                            "task_id": task_id
+                        }
+                        await send_event(task_id, "webp_error", error_data)
+                        await update_progress(task_id, 100.0, f"处理失败：第 {i+1} 帧的格式不是支持的图片格式", "错误", is_done=True)
+                        await close_progress_connection(task_id, "ERROR_OCCURRED")
+                        return
                     
                     # 保存为临时文件
                     # 获取原始文件的后缀名
@@ -447,9 +542,14 @@ async def create_webp_animation(
                     if response.status_code != 200:
                         error_msg = f"从Java后端获取图片失败，状态码: {response.status_code}, 响应: {response.text}"
                         logger.error(error_msg)
-                        update_progress(task_id, 100, f"处理失败：{error_msg}", "错误", is_done=True)
-                        close_progress_connection(task_id)
-                        raise HTTPException(status_code=400, detail=error_msg)
+                        error_data = {
+                            "error": error_msg,
+                            "task_id": task_id
+                        }
+                        await send_event(task_id, "webp_error", error_data)
+                        await update_progress(task_id, 100.0, f"处理失败：{error_msg}", "错误", is_done=True)
+                        await close_progress_connection(task_id, "ERROR_OCCURRED")
+                        return
                     
                     # 将获取到的图片数据保存到临时文件
                     with open(dest_path, 'wb') as f:
@@ -462,23 +562,31 @@ async def create_webp_animation(
                     
                 except requests.RequestException as e:
                     logger.error(f"获取第 {i+1} 帧时出错: {str(e)}")
-                    update_progress(task_id, 100, f"处理失败：获取第 {i+1} 帧时出错: {str(e)}", "错误", is_done=True)
-                    close_progress_connection(task_id)
-                    raise HTTPException(status_code=400, detail=f"获取第 {i+1} 帧时出错: {str(e)}")
+                    error_data = {
+                        "error": f"获取第 {i+1} 帧时出错: {str(e)}",
+                        "task_id": task_id
+                    }
+                    await send_event(task_id, "webp_error", error_data)
+                    await update_progress(task_id, 100.0, f"处理失败：获取第 {i+1} 帧时出错: {str(e)}", "错误", is_done=True)
+                    await close_progress_connection(task_id, "ERROR_OCCURRED")
+                    return
                 
                 # 添加短暂延迟，避免进度更新过于频繁
                 await asyncio.sleep(PROGRESS_UPDATE_INTERVAL)
                 
-            except HTTPException:
-                raise
             except Exception as e:
                 logger.error(f"处理第 {i+1} 帧时出错: {str(e)}")
-                update_progress(task_id, 100, f"处理失败：处理第 {i+1} 帧时出错: {str(e)}", "错误", is_done=True)
-                close_progress_connection(task_id)
-                raise HTTPException(status_code=400, detail=f"处理第 {i+1} 帧时出错: {str(e)}")
+                error_data = {
+                    "error": f"处理第 {i+1} 帧时出错: {str(e)}",
+                    "task_id": task_id
+                }
+                await send_event(task_id, "webp_error", error_data)
+                await update_progress(task_id, 100.0, f"处理失败：处理第 {i+1} 帧时出错: {str(e)}", "错误", is_done=True)
+                await close_progress_connection(task_id, "ERROR_OCCURRED")
+                return
         
         # 更新进度
-        update_progress(task_id, 96, "所有帧获取完成，开始创建WebP动画", "合成")
+        await update_progress(task_id, 96.0, "所有帧获取完成，开始创建WebP动画", "合成")
         
         # 创建WebP动画
         output_filename = f"animation_{timestamp}.webp"
@@ -486,57 +594,67 @@ async def create_webp_animation(
         
         try:
             # 使用PIL创建WebP动画
-            update_progress(task_id, 96, "正在加载图像帧", "合成")
+            await update_progress(task_id, 96.0, "正在加载图像帧", "合成")
             # 需要使用绝对路径打开图像文件
             absolute_frame_paths = [os.path.join(TEMP_DIR, path) for path in saved_frame_paths]
             frames_pil = [Image.open(frame_path) for frame_path in absolute_frame_paths]
             
             # 更新进度
-            update_progress(task_id, 97, "正在合成WebP动画", "合成")
+            await update_progress(task_id, 97.0, "正在合成WebP动画", "合成")
             
-            # 保存为WebP动画
-            frames_pil[0].save(
-                output_path,
-                format='WEBP',
-                append_images=frames_pil[1:],
-                save_all=True,
-                duration=delays_list,  # 每帧的持续时间（毫秒）
-                loop=0  # 0表示无限循环
-            )
+            # 使用多线程保存WebP动画并定期更新进度
+            await _save_webp_with_progress(frames_pil, output_path, delays_list, task_id)
             
             logger.info(f"WebP动画已创建: {output_path}")
             
-            # 返回WebP文件路径（相对路径）
-            result = CreateWebpResponse(
+            # 构建结果数据，使用 CreateWebpResponse 模型
+            result_response = CreateWebpResponse(
                 webp=output_filename,  # 使用相对路径
                 task_id=task_id
             )
             
+            # 通过SSE发送处理结果
+            await send_event(task_id, "webp_result", result_response.model_dump())
+            logger.info(f"任务 {task_id}: WebP动画创建结果已通过SSE发送")
+            
             # 最终进度更新
-            update_progress(task_id, 98, "WebP动画创建完成，等待客户端获取图片", "完成", len(saved_frame_paths), len(saved_frame_paths), is_done=False)
+            await update_progress(task_id, 98.0, "WebP动画创建完成，等待客户端获取图片", "完成", len(saved_frame_paths), len(saved_frame_paths), is_done=True)
             
-            # 确保SSE连接已关闭
-            logger.info(f"WebP动画创建任务 {task_id} 已完成，确保SSE连接已关闭")
-            close_progress_connection(task_id)
-            
-
+            # 注意：不在这里关闭SSE连接，等待Java端处理完webp_result事件后再关闭
+            logger.info(f"WebP动画创建任务 {task_id} 已完成，等待Java端处理完成")
             
         except Exception as e:
             logger.error(f"创建WebP动画时出错: {str(e)}")
-            update_progress(task_id, 100, f"处理失败：创建WebP动画时出错: {str(e)}", "错误", is_done=True)
-            close_progress_connection(task_id)
-            raise HTTPException(status_code=500, detail=f"创建WebP动画时出错: {str(e)}")
+            
+            # 构建错误结果数据，使用 ErrorResponse 模型
+            error_response = ErrorResponse(
+                error=f"创建WebP动画时出错: {str(e)}",
+                task_id=task_id )
+            # 通过SSE发送错误信息
+            await send_event(task_id, "webp_error", error_response.model_dump())
+            logger.info(f"任务 {task_id}: WebP动画创建错误已通过SSE发送")
+            
+            await update_progress(task_id, 100.0, f"处理失败：创建WebP动画时出错: {str(e)}", "错误", is_done=False)
+            # 注意：不在这里关闭SSE连接，等待Java端处理完webp_error事件后再关闭
+            logger.info(f"WebP动画创建错误任务 {task_id} 已发送，等待Java端处理完成")
     
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"处理请求时出错: {str(e)}")
-        # 如果有task_id，更新进度并关闭SSE连接
-        if task_id:
-            update_progress(task_id, 100, f"处理失败：{str(e)}", "错误")
-            close_progress_connection(task_id)
-        raise HTTPException(status_code=500, detail=f"处理请求时出错: {str(e)}")
+        logger.error(f"处理请求时出现出错: {str(e)}")
+        
+        # 构建错误结果数据，使用 ErrorResponse 模型
+        error_response = ErrorResponse(
+            error=f"处理请求时出现出错: {str(e)}",
+            task_id=task_id
+        )
+        
+        # 通过SSE发送错误信息
+        await send_event(task_id, "webp_error", error_response.model_dump())
+        logger.info(f"任务 {task_id}: WebP动画创建请求处理的错误已通过SSE发送")
+        
+        # 更新进度，但不关闭SSE连接
+        await update_progress(task_id, 100.0, f"处理失败：{str(e)}", "错误", is_done=False)
+        # 注意：不在这里关闭SSE连接，等待Java端处理完webp_error事件后再关闭
+        logger.info(f"WebP动画创建请求处理错误的任务 {task_id} 已发送，等待Java端处理完成")
     finally:
         # 先清理临时文件
         cleanup_temp_files()
-    return result

@@ -39,7 +39,8 @@ ENV LOG_FILE_PATH=/app/logs \
 #     MAX_CONTENT_LENGTH=10485760 \
 #     REDIS_HOST=localhost \
 #     REDIS_PORT=6379 \
-#     REDIS_CHANNEL=sse \
+#     REDIS_DB=0 \
+#     REDIS_PASSWORD= \
 #     PROGRESS_UPDATE_INTERVAL=0.5 \
 #     JAVA_BACKEND_URL=http://localhost:8080
 

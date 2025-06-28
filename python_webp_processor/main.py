@@ -63,6 +63,11 @@ async def lifespan(app: FastAPI):
     
     # 关闭时执行
     logger.info("FastAPI应用关闭中...")
+    
+    # 关闭Redis连接
+    from api.progress import close_redis
+    await close_redis()
+    
     cleanup_on_exit()
 
 def create_app() -> FastAPI:
