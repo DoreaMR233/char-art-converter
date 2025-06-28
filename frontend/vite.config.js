@@ -6,6 +6,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { debugLog } from './src/utils/vite-debug.js'
 
 /**
  * 环境变量配置
@@ -29,13 +30,13 @@ export default defineConfig(({ mode }) => {
   // 生产模式下实际API基础路径：/资源路径前缀/API基础路径
   const actualApiBasePath =  basePath === '' ? apiBasePath : `/${basePath}${apiBasePath}`
 
-  console.log(`当前模式: ${mode}`);
-  console.log(`API URL: ${apiUrl}`);
-  console.log(`API Base Path: ${apiBasePath}`);
-  console.log(`Base Path: ${basePath}`);
-  console.log(`Port: ${port}`);
-  console.log(`Sourcemap: ${sourcemap}`);
-  console.log(`actualApiBasePath: ${actualApiBasePath}`);
+  debugLog(`当前模式: ${mode}`);
+  debugLog(`API URL: ${apiUrl}`);
+  debugLog(`API Base Path: ${apiBasePath}`);
+  debugLog(`Base Path: ${basePath}`);
+  debugLog(`Port: ${port}`);
+  debugLog(`Sourcemap: ${sourcemap}`);
+  debugLog(`actualApiBasePath: ${actualApiBasePath}`);
 
   return {
 
@@ -85,10 +86,10 @@ export default defineConfig(({ mode }) => {
           });
 
           proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('代理请求:', req.url, '方法:', req.method);
+            debugLog('代理请求:', req.url, '方法:', req.method);
             // 对于SSE请求，添加特殊处理
-            if (req.url.includes('/progress/')) {
-              console.log('检测到SSE请求，添加特殊处理');
+            if (req.url.includes('/progress/') && !req.url.includes('/progress/close/')) {
+              debugLog('检测到SSE请求，添加特殊处理');
               // 确保不缓存SSE响应
               proxyReq.setHeader('Cache-Control', 'no-cache, no-transform');
               proxyReq.setHeader('Connection', 'keep-alive');
@@ -98,10 +99,10 @@ export default defineConfig(({ mode }) => {
 
           // 添加响应拦截器，处理CORS和SSE相关的头部
           proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('代理响应:', req.url, '状态码:', proxyRes.statusCode);
+            debugLog('代理响应:', req.url, '状态码:', proxyRes.statusCode);
 
-            if (req.url.includes('/progress/')) {
-              console.log('处理SSE响应头');
+            if (req.url.includes('/progress/') && !req.url.includes('/progress/close/')) {
+              debugLog('处理SSE响应头');
               // SSE 相关头部
               proxyRes.headers['Cache-Control'] = 'no-cache, no-transform';
               proxyRes.headers['Connection'] = 'keep-alive';
@@ -117,7 +118,7 @@ export default defineConfig(({ mode }) => {
               delete proxyRes.headers['content-encoding'];
 
               // 记录响应头信息，用于调试
-              console.log('SSE响应头:', JSON.stringify(proxyRes.headers));
+              debugLog('SSE响应头:', JSON.stringify(proxyRes.headers));
             }
           });
         }

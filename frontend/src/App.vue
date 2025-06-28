@@ -161,7 +161,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElLoading, ElUpload } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
-import { convertImage, getCharText, subscribeToProgress, checkHealth, getTempImage } from './api'
+import { convertImage, getCharText, checkHealth, getTempImage } from './api/convert'
+import { subscribeToProgress } from './api/progress'
+import { debugLog } from './utils/debug.js'
 
 /**
  * 响应式状态变量
@@ -211,6 +213,42 @@ const hasCharText = ref(false)  // 标识是否成功获取到字符画文本，
  * @type {EventSource|null}
  */
 let eventSource = null
+let shouldCloseConnection = false // 控制是否应该关闭SSE连接的标志
+let progressCloseTimer = null // 进度条延时关闭定时器
+
+/**
+ * 延时关闭进度条
+ * 在转换完成或出错后，延时3秒关闭进度条显示
+ */
+const closeProgressWithDelay = () => {
+  // 清除之前的定时器
+  if (progressCloseTimer) {
+    clearTimeout(progressCloseTimer)
+  }
+  
+  // 设置3秒后关闭进度条
+  progressCloseTimer = setTimeout(() => {
+    isProcessing.value = false
+    progressCloseTimer = null
+    debugLog('进度条已延时关闭')
+  }, 3000)
+  
+  debugLog('进度条将在3秒后关闭')
+}
+
+/**
+ * 重置连接关闭标志和清除进度条定时器
+ */
+const resetProcessingState = () => {
+  // 重置连接关闭标志
+  shouldCloseConnection = false
+  
+  // 清除之前的进度条关闭定时器
+  if (progressCloseTimer) {
+    clearTimeout(progressCloseTimer)
+    progressCloseTimer = null
+  }
+}
 
 
 
@@ -230,15 +268,15 @@ const maxUploadSize = computed(() => {
  * @returns {boolean} 验证通过返回true，验证失败返回false
  */
 const beforeUpload = (file) => {
-  console.log(file)
+  debugLog(file)
   // 检查文件类型
   const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp']
   if (!allowedTypes.includes(file.type)) {
     ElMessage.error('只能上传JPG、PNG、JPEG、GIF、WEBP、BMP格式的图片!')
     return false
   }
-  console.log(file.size)
-  console.log(maxUploadSize.value)
+  debugLog(file.size)
+  debugLog(maxUploadSize.value)
   // 检查文件大小
   const isLessThanLimit = file.size / 1024 / 1024 < maxUploadSize.value
   if (!isLessThanLimit) {
@@ -281,7 +319,7 @@ const handleFileChange = (file) => {
       charText.value = ''
       isLargeImage.value = false
       
-      console.log('已更新图片:', imageFile.value.name)
+      debugLog('已更新图片:', imageFile.value.name)
     }
   }
 }
@@ -309,6 +347,9 @@ const processImageOriginal = async () => {
   processPercentage.value = 0
   progressStage.stage.value = '准备处理'
   
+  // 重置处理状态
+  resetProcessingState()
+  
   try {
     if (!imageFile.value) {
       ElMessage.error('请先选择图片')
@@ -322,41 +363,48 @@ const processImageOriginal = async () => {
     formData.append('limitSize', limitSize.value)
     
     // 添加请求ID到FormData，后端可以使用这个ID来发送进度更新
-    const requestId = Date.now().toString()
+    const requestId = crypto.randomUUID()
     formData.append('progressId', requestId)
-    console.log('请求ID:', requestId)
+    debugLog('请求ID:', requestId)
     
-    // 创建事件源用于接收进度更新
-    console.log('订阅进度更新，请求ID:', requestId)
-    eventSource = subscribeToProgress(requestId, (data) => {
-      console.log('进度更新:', data)
+    // 订阅进度更新
+    debugLog('订阅进度更新，请求ID:', requestId)
+    eventSource = subscribeToProgress(requestId, async (data) => {
+      debugLog('进度更新:', data)
       
       // 确保percentage是数字并更新进度条
       if (data.percentage !== undefined) {
         processPercentage.value = parseFloat(data.percentage.toFixed(2));
-        console.log('更新进度百分比:', data.percentage)
+        debugLog('更新进度百分比:', data.percentage)
       }
       
       // 更新进度阶段
       if (data.stage) {
         progressStage.stage.value = data.stage
-        console.log('更新进度阶段:', data.stage)
+        debugLog('更新进度阶段:', data.stage)
       }
       if (data.message) {
         progressStage.message.value = data.message
-        console.log('更新进度消息:', data.message)
+        debugLog('更新进度消息:', data.message)
       }
       
       // 更新像素处理信息
       if (data.currentPixel !== undefined && data.totalPixels !== undefined) {
         currentPixel.value = data.currentPixel
         totalPixels.value = data.totalPixels
-        console.log('更新像素信息:', data.currentPixel, '/', data.totalPixels)
+        debugLog('更新像素信息:', data.currentPixel, '/', data.totalPixels)
+      }
+      
+      // 处理转换结果消息
+      if (data.type === 'convertResult') {
+        console.log('收到转换结果，开始获取图片和文本...')
+        await handleConvertResult(data.filePath, data.contentType)
+        return
       }
       
       // 处理连接状态更新
-      if (data.connectionStatus) {
-        console.log('连接状态更新:', data.connectionStatus)
+        if (data.connectionStatus) {
+          debugLog('连接状态更新:', data.connectionStatus)
         // 根据连接状态更新UI
         switch (data.connectionStatus) {
           case 'reconnecting':
@@ -368,128 +416,59 @@ const processImageOriginal = async () => {
             // 显示连接失败的提示
             progressStage.stage.value = '连接失败'
             progressStage.message.value = '连接失败，请刷新页面重试'
+            // 连接失败时关闭进度条
+            shouldCloseConnection = true
+            closeProgressWithDelay()
             break
           case 'error':
             // 显示连接错误的提示
             progressStage.stage.value = 'SSE连接错误'
             progressStage.message.value = 'SSE连接错误，请检查网络连接'
+            // 连接错误时关闭进度条
+            shouldCloseConnection = true
+            closeProgressWithDelay()
             break
           case 'closed':
-            // 显示连接已关闭的提示
-            progressStage.stage.value = 'SSE超时'
-            progressStage.message.value = '由于服务器长时间为响应，已关闭SSE消息通知连接'
+            // 根据关闭原因显示不同的提示
+            switch (data.closeReason) {
+              case 'HEARTBEAT_TIMEOUT':
+                progressStage.stage.value = 'SSE超时'
+                progressStage.message.value = '由于服务器长时间未响应，已关闭SSE消息通知连接'
+                break
+              case 'ERROR_OCCURRED':
+                progressStage.stage.value = 'SSE错误'
+                progressStage.message.value = '处理过程中发生错误，已关闭SSE连接'
+                break
+              case 'TASK_COMPLETED':
+                progressStage.stage.value = '任务完成'
+                progressStage.message.value = '图片转换完成，SSE连接已正常关闭'
+                break
+              default:
+                progressStage.stage.value = 'SSE关闭'
+                progressStage.message.value = 'SSE连接已关闭'
+                break
+            }
+            // 连接关闭时关闭进度条
+            shouldCloseConnection = true
+            closeProgressWithDelay()
         }
       }
     })
     
     // 发送请求
-    console.log('发送转换请求...')
+    debugLog('发送转换请求...')
     const response = await convertImage(formData, (uploadPercentage) => {
-      console.log('上传进度:', uploadPercentage)
+      debugLog('上传进度:', uploadPercentage)
       // 上传阶段占总进度的30%
       processPercentage.value = Math.floor(uploadPercentage * 0.3)
       progressStage.stage.value = '上传图片'
       progressStage.message.value = '上传图片'
     })
     
-    console.log('请求完成，处理响应...')
-    console.log('响应数据:', response.data)
+    debugLog('请求完成，等待SSE消息...')
+    debugLog('响应数据:', response.data)
     
-    // 从响应中获取文件路径和内容类型
-    const { filePath, contentType } = response.data
-    console.log('文件路径:', filePath)
-    console.log('内容类型:', contentType)
-    
-    // 使用文件路径获取图片数据
-    console.log('获取图片数据...')
-    
-    // 显示加载提示
-    const loadingInstance = ElLoading.service({
-      lock: true,
-      text: '获取图片数据中...',
-      background: 'rgba(0, 0, 0, 0.7)'
-    })
-    
-    const imageResponse = await getTempImage(filePath, contentType)
-    
-    // 创建一个Blob对象
-    const blob = new Blob([imageResponse.data], { type: contentType })
-    
-    // 记录响应数据大小和类型
-    const responseSize = imageResponse.data.size || 0
-    console.log('响应数据大小:', responseSize, '字节')
-    console.log('响应数据类型:', imageResponse.data.type)
-    
-    // 检查响应大小是否超过300MB
-    const MAX_SIZE = 300 * 1024 * 1024 // 300MB in bytes
-    
-    // 创建URL以便下载
-    charImageUrl.value = URL.createObjectURL(blob)
-    charImageUrlList.value = [charImageUrl.value]
-    
-    if (responseSize > MAX_SIZE) {
-      // 如果响应大小超过300MB，设置大图片标志并显示警告消息
-      isLargeImage.value = true
-      ElMessage.warning({
-        message: '字符画图片过于庞大（超过300MB），无法在浏览器中展示，但您仍可以正常下载其文本和图片。',
-        duration: 8000,
-        showClose: true
-      })
-      console.log('大文件Blob URL已创建但不显示:', charImageUrl.value)
-      // 关闭加载提示
-      loadingInstance.close()
-    } else {
-      // 正常大小的图片，重置大图片标志并显示
-      isLargeImage.value = false
-      console.log('Blob URL:', charImageUrl.value)
-      
-      // 加载图片
-      const img = new Image()
-      img.onload = () => {
-        console.log('图片加载成功')
-        // 关闭加载提示
-        loadingInstance.close()
-      }
-      img.onerror = (e) => {
-        console.error('图片加载失败:', e)
-        // 关闭加载提示
-        loadingInstance.close()
-      }
-      img.src = charImageUrl.value
-    }
-    
-    // 获取字符画文本
-    console.log('获取字符画文本...')
-    try {
-      const textResponse = await getCharText(imageFile.value.name)
-      
-      // axios已经自动解析了JSON响应，直接使用textResponse.data
-      const jsonData = textResponse.data
-      console.log('字符画文本响应:', jsonData)
-      
-      // 设置字符画文本和可用性状态
-      if (jsonData.find) {
-        charText.value = jsonData.text
-        hasCharText.value = true
-        console.log('找到字符画文本')
-      } else {
-        charText.value = ''
-        hasCharText.value = false
-        console.log('未找到字符画文本')
-        ElMessage.warning('未找到字符画文本，无法导出为文本')
-      }
-    } catch (e) {
-      console.error('获取字符画文本失败:', e)
-      charText.value = ''
-      hasCharText.value = false
-      ElMessage.error('获取字符画文本失败')
-    }
-    
-    processPercentage.value = 100
-    progressStage.stage.value = '处理完成'
-    progressStage.message.value = '处理完成'
-    console.log('转换完成')
-    ElMessage.success('转换完成')
+    // 注意：现在不再直接获取图片和文本，而是等待SSE的convertResult消息
     
   } catch (error) {
     console.error('处理失败:', error)
@@ -501,18 +480,190 @@ const processImageOriginal = async () => {
     progressStage.stage.value = '处理失败'
     progressStage.message.value = '处理失败'
     
+    // 发生错误时设置应该关闭连接的标志
+    shouldCloseConnection = true
+    
+    // 发生错误时延时关闭进度条
+    closeProgressWithDelay()
+    
     // 确保关闭加载提示（如果存在）
     if (typeof loadingInstance !== 'undefined' && loadingInstance) {
       loadingInstance.close()
     }
   } finally {
-    // 确保关闭EventSource连接
-    if (eventSource) {
-      console.log('关闭EventSource连接')
+    // 只有在应该关闭连接时才关闭EventSource连接
+    if (eventSource && shouldCloseConnection) {
+      debugLog('关闭EventSource连接')
       eventSource.close()
       eventSource = null
     }
-    isProcessing.value = false
+    // 注意：不再直接设置 isProcessing.value = false
+    // 现在由 closeProgressWithDelay() 函数来延时关闭进度条
+  }
+}
+
+/**
+ * 处理转换结果的方法
+ * 当收到SSE的convertResult消息时调用，获取图片和文本
+ * @param {string} filePath - 文件路径
+ * @param {string} contentType - 内容类型
+ */
+const handleConvertResult = async (filePath, contentType) => {
+  try {
+    debugLog('文件路径:', filePath)
+    debugLog('内容类型:', contentType)
+    
+    // 获取图片数据
+    debugLog('获取图片数据...')
+    
+    // 显示加载提示
+    const loadingInstance = ElLoading.service({
+      lock: true,
+      text: '获取图片数据中...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    })
+    
+    let imageLoadSuccess = false
+    let textLoadSuccess = false
+    
+    try {
+      const imageResponse = await getTempImage(filePath, contentType)
+      
+      // 创建一个Blob对象
+      const blob = new Blob([imageResponse.data], { type: contentType })
+      
+      // 记录响应数据大小和类型
+      const responseSize = imageResponse.data.size || imageResponse.data.byteLength || 0
+      debugLog('响应数据大小:', responseSize, '字节')
+      debugLog('响应数据类型:', imageResponse.data.type)
+      
+      // 检查响应大小是否超过300MB
+      const MAX_SIZE = 300 * 1024 * 1024 // 300MB in bytes
+      
+      // 创建URL以便下载
+      charImageUrl.value = URL.createObjectURL(blob)
+      charImageUrlList.value = [charImageUrl.value]
+      
+      if (responseSize > MAX_SIZE) {
+        // 如果响应大小超过300MB，设置大图片标志并显示警告消息
+        isLargeImage.value = true
+        ElMessage.warning({
+          message: '字符画图片过于庞大（超过300MB），无法在浏览器中展示，但您仍可以正常下载其文本和图片。',
+          duration: 8000,
+          showClose: true
+        })
+        debugLog('大文件Blob URL已创建但不显示:', charImageUrl.value)
+        // 关闭加载提示
+        loadingInstance.close()
+        imageLoadSuccess = true
+      } else {
+        // 正常大小的图片，重置大图片标志并显示
+        isLargeImage.value = false
+        debugLog('Blob URL:', charImageUrl.value)
+        
+        // 加载图片
+        const img = new Image()
+        img.onload = () => {
+          debugLog('图片加载成功')
+          // 关闭加载提示
+          loadingInstance.close()
+        }
+        img.onerror = (e) => {
+          console.error('图片加载失败:', e)
+          // 关闭加载提示
+          loadingInstance.close()
+        }
+        img.src = charImageUrl.value
+        imageLoadSuccess = true
+      }
+    } catch (e) {
+      console.error('获取图片数据失败:', e)
+      ElMessage.warning('获取图片数据失败')
+      loadingInstance.close()
+      throw new Error('获取图片数据失败: ' + (e.message || '未知错误'))
+    }
+    
+    // 获取字符画文本
+    debugLog('获取字符画文本...')
+    try {
+      const textResponse = await getCharText(imageFile.value.name)
+      
+      // axios已经自动解析了JSON响应，直接使用textResponse.data
+      const jsonData = textResponse.data
+      debugLog('字符画文本响应:', jsonData)
+      
+      // 设置字符画文本和可用性状态
+      if (jsonData.find) {
+        charText.value = jsonData.text
+        hasCharText.value = true
+        debugLog('找到字符画文本')
+        textLoadSuccess = true
+      } else {
+        charText.value = ''
+        hasCharText.value = false
+        debugLog('未找到字符画文本')
+        textLoadSuccess = false
+      }
+    } catch (e) {
+      console.error('获取字符画文本失败:', e)
+      charText.value = ''
+      hasCharText.value = false
+      throw new Error('获取字符画文本失败: ' + (e.message || '未知错误'))
+    }
+    
+    // 只有在图片和文本都成功获取时才显示完全成功
+    processPercentage.value = 100
+    progressStage.stage.value = '处理完成'
+    progressStage.message.value = '处理完成'
+    debugLog('转换完成')
+    
+    if (imageLoadSuccess && textLoadSuccess) {
+      ElMessage.success('转换完成')
+    } else if (imageLoadSuccess && !textLoadSuccess) {
+      // 检查是否为动图
+      const fileExt = imageFile.value.name.split('.').pop().toLowerCase()
+      if (fileExt === 'gif' || fileExt === 'webp') {
+        ElMessage.success('动图转换完成（动图暂不支持字符画文本导出）')
+      } else {
+        ElMessage.warning('图片转换完成，但字符画文本获取失败')
+      }
+    } else if(!imageLoadSuccess){
+      ElMessage.error('获取图片失败')
+    } else {
+      ElMessage.error('转换失败，请刷新页面后重试')
+    }
+    
+    // 转换完成时设置应该关闭连接的标志并关闭连接
+    shouldCloseConnection = true
+    if (eventSource) {
+      debugLog('转换完成，关闭EventSource连接')
+      eventSource.close()
+      eventSource = null
+    }
+    
+    // 转换完成时延时关闭进度条
+    closeProgressWithDelay()
+    
+  } catch (error) {
+    console.error('获取转换结果失败:', error)
+    const errorMessage = error.response && error.response.data && error.response.data.message
+      ? error.response.data.message
+      : error.message || '获取转换结果失败'
+    ElMessage.error('获取转换结果失败: ' + errorMessage)
+    
+    progressStage.stage.value = '获取结果失败'
+    progressStage.message.value = '获取转换结果失败'
+    
+    // 获取转换结果失败时设置应该关闭连接的标志并关闭连接
+    shouldCloseConnection = true
+    if (eventSource) {
+      debugLog('获取转换结果失败，关闭EventSource连接')
+      eventSource.close()
+      eventSource = null
+    }
+    
+    // 获取转换结果失败时延时关闭进度条
+    closeProgressWithDelay()
   }
 }
 
@@ -602,10 +753,10 @@ onMounted(() => {
   // 检查后端服务健康状态
   checkHealth()
     .then(response => {
-      console.log('后端服务健康状态:', response.data)
-      if (response.data.status === 'UP' && response.data.webpProcessor === 'UP') {
-        ElMessage.success('后端服务正常运行')
-        console.log('后端服务正常运行')
+      debugLog('后端服务健康状态:', response.data)
+        if (response.data.status === 'UP' && response.data.webpProcessor === 'UP') {
+          ElMessage.success('后端服务正常运行')
+          debugLog('后端服务正常运行')
       }else if(response.data.status === 'UP' && response.data.webpProcessor === 'OFF') {
         ElMessage.warning('后端服务正常运行，但WebP处理服务未启用，无法处理Webp格式动图')
       }else {
