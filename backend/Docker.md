@@ -182,6 +182,7 @@ curl http://localhost:8080/api/health
 | `DEFAULT_COLOR_MODE`                | 默认颜色模式     | 字符画转换的默认颜色模式         | `grayscale`             |
 | `DEFAULT_CONFIG_PATH`               | 默认配置路径     | 应用配置文件的默认路径          | `/app/config`           |
 | `DEFAULT_TEMP_PATH`                 | 默认临时文件路径   | 临时文件存储的默认路径          | `/app/data`             |
+| `char-art.temp-directory`           | 字符画临时目录    | 字符画处理时的临时文件目录        | `./temp`                |
 | `LOG_FILE_PATH`                     | 日志文件路径     | 日志文件存储的路径            | `/app/logs`             |
 | `CHAR_ART_PARALLEL_MAX_FRAME_THREADS` | 最大并行帧数     | 同时处理的帧数上限            | `4`                     |
 | `CHAR_ART_PARALLEL_THREAD_POOL_FACTOR` | 线程池大小计算因子  | CPU核心数的倍数             | `0.5`                   |
