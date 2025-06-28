@@ -1,6 +1,8 @@
 package com.doreamr233.charartconverter.model;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.awt.image.BufferedImage;
 
@@ -8,6 +10,8 @@ import java.awt.image.BufferedImage;
  * WebP处理结果类
  */
 @Data
+@Getter
+@Setter
 public class WebpProcessResult {
     private final int frameCount;
     private final int[] delays;
