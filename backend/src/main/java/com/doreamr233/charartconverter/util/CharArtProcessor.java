@@ -1,6 +1,7 @@
 package com.doreamr233.charartconverter.util;
 
 import com.doreamr233.charartconverter.config.ParallelProcessingConfig;
+import com.doreamr233.charartconverter.config.TempDirectoryConfig;
 import com.doreamr233.charartconverter.exception.ServiceException;
 import com.doreamr233.charartconverter.model.FrameProcessResult;
 import com.doreamr233.charartconverter.model.WebpFrameProcessResult;
@@ -48,6 +49,7 @@ import static com.doreamr233.charartconverter.config.RedisConfig.CACHE_KEY_PREFI
 public class CharArtProcessor {
     
     private static ParallelProcessingConfig parallelConfig;
+    private static TempDirectoryConfig tempDirectoryConfig;
     
     /**
      * 设置并行处理配置
@@ -56,11 +58,22 @@ public class CharArtProcessor {
     public static void setParallelConfig(ParallelProcessingConfig config) {
         parallelConfig = config;
     }
-
+    
     /**
-     * 临时目录路径
+     * 设置临时目录配置
+     * @param config 临时目录配置
      */
-    private static final String TEMP_DIR = System.getProperty("java.io.tmpdir");
+    public static void setTempDirectoryConfig(TempDirectoryConfig config) {
+        tempDirectoryConfig = config;
+    }
+    
+    /**
+     * 获取临时目录路径
+     * @return 临时目录路径
+     */
+    private static String getTempDir() {
+        return tempDirectoryConfig != null ? tempDirectoryConfig.getTempDirectory() : System.getProperty("java.io.tmpdir");
+    }
 
     /**
      * 字符集数组，包含不同密度级别的字符集
@@ -896,7 +909,7 @@ public class CharArtProcessor {
             
             // 创建临时文件，使用UUID确保唯一性
             Path tempFile = Files.createTempFile(
-                Paths.get(TEMP_DIR), 
+                Paths.get(getTempDir()), 
                 prefix + UUID.randomUUID(),
                 formattedSuffix
             );

@@ -7,6 +7,7 @@ import com.doreamr233.charartconverter.exception.ServiceException;
 import com.doreamr233.charartconverter.model.WebpProcessResult;
 import com.doreamr233.charartconverter.service.ProgressService;
 import com.doreamr233.charartconverter.config.ParallelProcessingConfig;
+import com.doreamr233.charartconverter.config.TempDirectoryConfig;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.apache.commons.io.FileUtils;
@@ -66,6 +67,12 @@ public class WebpProcessorClient {
      */
     @Resource
     private ParallelProcessingConfig parallelConfig;
+    
+    /**
+     * 临时目录配置
+     */
+    @Resource
+    private TempDirectoryConfig tempDirectoryConfig;
     
     /**
      * 存储任务ID与对应的SSE连接Call对象
@@ -469,7 +476,7 @@ public class WebpProcessorClient {
                         } else {
                             // 将响应体保存为临时文件
                             byte[] webpData = webpResponse.bodyBytes();
-                            File tempFile = File.createTempFile("animation", ".webp");
+                            File tempFile = new File(tempDirectoryConfig.getTempDirectory(), "animation_" + System.currentTimeMillis() + ".webp");
                             FileUtils.writeByteArrayToFile(tempFile, webpData);
                             
                             // 更新最终进度
@@ -998,8 +1005,8 @@ public class WebpProcessorClient {
             for (Path framePath : framePaths) {
                 String extName = FileNameUtil.extName(framePath.toFile()).isEmpty() ? ".png" : "." + FileNameUtil.extName(framePath.toFile());
                 frameFormatArray.put(extName);
-                // 获取系统临时目录路径
-                String tempDir = System.getProperty("java.io.tmpdir");
+                // 获取配置的临时目录路径
+                String tempDir = tempDirectoryConfig.getTempDirectory();
                 Path tempDirPath = Path.of(tempDir);
                 
                 // 将绝对路径转换为相对于临时目录的路径

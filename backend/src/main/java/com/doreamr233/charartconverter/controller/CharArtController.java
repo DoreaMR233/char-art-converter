@@ -14,6 +14,7 @@ import com.doreamr233.charartconverter.service.ProgressService;
 import com.doreamr233.charartconverter.util.CharArtProcessor;
 import com.doreamr233.charartconverter.util.WebpProcessorClient;
 import com.doreamr233.charartconverter.config.ParallelProcessingConfig;
+import com.doreamr233.charartconverter.config.TempDirectoryConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -74,6 +75,11 @@ public class CharArtController {
      * 并行处理配置
      */
     private final ParallelProcessingConfig parallelConfig;
+    
+    /**
+     * 临时目录配置
+     */
+    private final TempDirectoryConfig tempDirectoryConfig;
 
     /**
      * WebP处理服务是否启用
@@ -225,7 +231,7 @@ public class CharArtController {
 
                     // 将结果保存到临时文件
                     String resultFileName = "result_" + progressId + resultExtension;
-                    String tempDir = System.getProperty("java.io.tmpdir");
+                    String tempDir = tempDirectoryConfig.getTempDirectory();
                     resultFile = Path.of(tempDir, resultFileName);
                     Files.write(resultFile, result);
                     
@@ -639,8 +645,8 @@ public class CharArtController {
             String decodedFilePath = java.net.URLDecoder.decode(filePath, StandardCharsets.UTF_8);
             log.info("解码后的文件路径: {}", decodedFilePath);
             
-            // 构建完整的文件路径（基于系统临时目录）
-            String tempDir = System.getProperty("java.io.tmpdir");
+            // 构建完整的文件路径（基于配置的临时目录）
+            String tempDir = tempDirectoryConfig.getTempDirectory();
             final Path fullPath = Path.of(tempDir, decodedFilePath);
             
             // 检查文件是否存在
