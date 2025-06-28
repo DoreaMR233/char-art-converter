@@ -56,6 +56,10 @@ if [ ! -z "$REDIS_TIMEOUT" ]; then
   sed -i "s|spring.redis.timeout=.*|spring.redis.timeout=$REDIS_TIMEOUT|g" "$CONFIG_FILE"
 fi
 
+if [ ! -z "$REDIS_PASSWORD" ]; then
+  sed -i "s|spring.redis.password=.*|spring.redis.password=$REDIS_PASSWORD|g" "$CONFIG_FILE"
+fi
+
 # 自定义字符画缓存配置
 if [ ! -z "$CHAR_ART_CACHE_TTL" ]; then
   sed -i "s|char-art.cache.ttl=.*|char-art.cache.ttl=$CHAR_ART_CACHE_TTL|g" "$CONFIG_FILE"
@@ -143,6 +147,35 @@ fi
 # 自定义日期时间格式
 if [ ! -z "$DATETIME_FORMAT" ]; then
   sed -i "s|spring.mvc.format.date-time=.*|spring.mvc.format.date-time=$DATETIME_FORMAT|g" "$CONFIG_FILE"
+fi
+
+# 自定义并行处理配置
+if [ ! -z "$CHAR_ART_PARALLEL_MAX_FRAME_THREADS" ]; then
+  sed -i "s|char-art.parallel.max-frame-threads=.*|char-art.parallel.max-frame-threads=$CHAR_ART_PARALLEL_MAX_FRAME_THREADS|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_THREAD_POOL_FACTOR" ]; then
+  sed -i "s|char-art.parallel.thread-pool-factor=.*|char-art.parallel.thread-pool-factor=$CHAR_ART_PARALLEL_THREAD_POOL_FACTOR|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_MIN_THREADS" ]; then
+  sed -i "s|char-art.parallel.min-threads=.*|char-art.parallel.min-threads=$CHAR_ART_PARALLEL_MIN_THREADS|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL" ]; then
+  sed -i "s|char-art.parallel.progress-update-interval=.*|char-art.parallel.progress-update-interval=$CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL" ]; then
+  sed -i "s|char-art.parallel.pixel-progress-interval=.*|char-art.parallel.pixel-progress-interval=$CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_TASK_TIMEOUT" ]; then
+  sed -i "s|char-art.parallel.task-timeout=.*|char-art.parallel.task-timeout=$CHAR_ART_PARALLEL_TASK_TIMEOUT|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY" ]; then
+  sed -i "s|char-art.parallel.progress-cleanup-delay=.*|char-art.parallel.progress-cleanup-delay=$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY|g" "$CONFIG_FILE"
 fi
 
 

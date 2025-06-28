@@ -11,6 +11,7 @@ services:
       # Redis配置
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # - REDIS_PASSWORD=
       # - REDIS_DATABASE=0
       # - REDIS_TIMEOUT=60000
       # # 字符画缓存配置

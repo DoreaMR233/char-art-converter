@@ -57,6 +57,7 @@ ENV DEFAULT_CONFIG_PATH=/app/config \
 # ENV REDIS_HOST=localhost \
 #     REDIS_PORT=6379 \
 #     REDIS_DATABASE=0 \
+#     REDIS_PASSWORD= \
 #     REDIS_TIMEOUT=60000 \
 #     CHAR_ART_CACHE_TTL=3600 \
 #     CHAR_ART_CACHE_DEFAULT_KEY_PREFIX="char-art:text:" \
