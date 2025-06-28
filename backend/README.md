@@ -380,7 +380,7 @@ char-art.default-color-mode=grayscale
 
 ```properties
 # 临时文件目录
-java.io.tmpdir=/app/data
+char-art.temp-directory=/app/data
 ```
 
 #### Redis配置
