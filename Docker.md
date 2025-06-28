@@ -306,7 +306,7 @@ curl -I http://localhost:80
 | `REDIS_PORT`     | Redis端口    | Redis服务器的端口号      | `6379`              |
 | `REDIS_DATABASE` | Redis数据库索引 | 使用的Redis数据库索引     | `0`                 |
 | `REDIS_TIMEOUT`  | Redis连接超时  | Redis连接超时时间（毫秒）   | `60000`             |
-| `REDIS_CHANNEL`  | Redis通道    | Redis发布订阅通道名称     | `char-art-progress` |
+| `REDIS_DB`                 | Redis 数据库索引 | Redis 数据库编号   | `0`                            |
 
 #### 日志配置
 

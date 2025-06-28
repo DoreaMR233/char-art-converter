@@ -182,7 +182,7 @@ ENV WEBP_PROCESSOR_URL=http://localhost:$PORT \
 #     DEBUG=False \
 #     MAX_CONTENT_LENGTH=${MAX_UPLOAD_SIZE}*1024*1024 \
 #     TEMP_FILE_TTL=3600 \
-#     REDIS_CHANNEL=sse \
+#     REDIS_DB=0 \
 #     PROGRESS_UPDATE_INTERVAL=0.5
 
 # 创建必要的目录
