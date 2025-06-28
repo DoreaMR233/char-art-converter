@@ -136,7 +136,7 @@ fi
 
 # 设置临时文件目录为数据卷目录
 if [ ! -z "$DEFAULT_TEMP_PATH" ]; then
-  sed -i "s|java.io.tmpdir=.*|java.io.tmpdir=$DEFAULT_TEMP_PATH|g" "$CONFIG_FILE"
+  sed -i "s|char-art.temp-directory=.*|char-art.temp-directory=$DEFAULT_TEMP_PATH|g" "$CONFIG_FILE"
 fi
 
 # 自定义时区配置
