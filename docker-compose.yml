@@ -11,6 +11,7 @@ services:
       # Redis配置
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # - REDIS_PASSWORD=
       # - REDIS_DATABASE=0
       # - REDIS_TIMEOUT=60000
       # 字符画缓存配置
@@ -69,7 +70,8 @@ services:
       # Redis设置
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      # - REDIS_CHANNEL=sse
+      # - REDIS_DB=0
+      # - REDIS_PASSWORD=
       # 进度间隔时长
       # - PROGRESS_UPDATE_INTERVAL=0.5
       # Java后端服务URL
@@ -94,6 +96,8 @@ services:
     image: redis:6.2-alpine
     container_name: char-art-redis
     command: redis-server --appendonly yes
+    # 如果需要设置Redis密码，请取消注释下面的行并设置密码
+    # command: redis-server --appendonly yes --requirepass your_password_here
     volumes:
       - redis-data:/data
     restart: unless-stopped

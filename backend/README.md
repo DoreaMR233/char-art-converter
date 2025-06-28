@@ -102,15 +102,16 @@ backend/
 - **参数**:
   - `image`: (必需) 要转换的图片文件，支持JPG、JPEG、PNG、GIF、WebP格式
   - `density`: (可选) 字符密度，可选值为"low"、"medium"、"high"，默认为"medium"
-  - `colorMode`: (可选) 颜色模式，可选值为"color"、"grayscale"，默认为"grayscale"
+  - `colorMode`: (可选) 颜色模式，可选值为"color"、"colorBackground"、"grayscale"，默认为"grayscale"
   - `limitSize`: (可选) 是否限制字符画的最大尺寸，默认为true
   - `progressId`: (可选) 进度ID，用于跟踪转换进度，如果不提供则自动生成
-- **响应**: JSON格式，包含文件路径和内容类型
+- **响应**: JSON格式，包含进度ID和任务状态
 
   ```json
   {
-    "filePath": "result_1234567890.png",
-    "contentType": "image/png"
+    "progressId": "1234567890",
+    "status": "processing",
+    "message": "转换任务已启动，请通过SSE监听进度"
   }
   ```
 
@@ -140,19 +141,43 @@ backend/
 - **参数**:
   - `id`: (必需) 进度ID，用于标识要跟踪的特定转换任务
 - **响应**: SSE事件流，包含进度更新
-  - 事件类型: `init` - 连接建立时发送的初始化事件
   - 事件类型: `progress` - 进度更新事件，包含当前进度百分比、消息等信息
+  - 事件类型: `convertResult` - 转换结果事件，包含文件路径和内容类型
   - 事件类型: `heartbeat` - 保持连接活跃的心跳事件
-  - 事件类型: `close` - 连接关闭事件
+  - 事件类型: `close` - 连接关闭事件，包含关闭原因
+
+  **事件数据示例**:
+  
+  进度更新事件:
+  ```json
+  {
+    "progressId": "1234567890",
+    "progress": 50,
+    "message": "正在处理...",
+    "status": "处理中",
+    "currentFrame": 5,
+    "totalFrames": 10,
+    "isError": false
+  }
+  ```
+  
+  转换结果事件:
+  ```json
+  {
+    "filePath": "result_1234567890.png",
+    "contentType": "image/png"
+  }
+  ```
 
 ### 关闭进度连接接口
 
 主动关闭指定ID的进度连接。
 
-- **URL**: `/api/progress/{id}/close`
+- **URL**: `/api/progress/close/{id}`
 - **方法**: POST
 - **参数**:
   - `id`: (必需) 进度ID，用于标识要关闭的特定连接
+  - `closeReason`: (可选) 关闭原因，可选值为"TASK_COMPLETED"、"ERROR_OCCURRED"、"HEARTBEAT_TIMEOUT"等
 - **响应**: JSON格式，包含操作结果
 
   ```json
@@ -191,16 +216,36 @@ backend/
 
 ### 健康检查接口
 
-提供服务健康状态的检查。
+提供服务健康状态的检查，包括主服务和WebP处理器的状态。
 
 - **URL**: `/api/health`
 - **方法**: GET
 - **响应**: JSON格式，包含服务状态信息
 
+  **WebP处理器启用时**:
   ```json
   {
     "status": "UP",
-    "message": "字符画转换服务正常运行"
+    "webpProcessor": "UP",
+    "message": "字符画转换服务正常，Webp处理服务正常"
+  }
+  ```
+  
+  **WebP处理器未启用时**:
+  ```json
+  {
+    "status": "UP",
+    "webpProcessor": "OFF",
+    "message": "字符画转换服务正常运行，Webp处理服务未开启"
+  }
+  ```
+  
+  **WebP处理器异常时**:
+  ```json
+  {
+    "status": "UP",
+    "webpProcessor": "DOWN",
+    "message": "字符画转换服务正常，Webp处理服务异常"
   }
   ```
 

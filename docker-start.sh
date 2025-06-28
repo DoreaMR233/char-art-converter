@@ -89,8 +89,13 @@ if [ ! -z "$REDIS_PORT" ]; then
   sed -i "/^REDIS_PORT=/c\REDIS_PORT=$REDIS_PORT" "$WEBP_PROCESSOR_ENV_FILE"
 fi
 
-if [ ! -z "$REDIS_CHANNEL" ]; then
-  sed -i "/^REDIS_CHANNEL=/c\REDIS_CHANNEL=$REDIS_CHANNEL" "$WEBP_PROCESSOR_ENV_FILE"
+if [ ! -z "$REDIS_DB" ]; then
+  sed -i "/^REDIS_DB=/c\REDIS_DB=$REDIS_DB" "$WEBP_PROCESSOR_ENV_FILE"
+fi
+
+# 设置Redis密码
+if [ ! -z "$REDIS_PASSWORD" ]; then
+  sed -i "/^REDIS_PASSWORD=/c\REDIS_PASSWORD=$REDIS_PASSWORD" "$WEBP_PROCESSOR_ENV_FILE"
 fi
 
 # 设置进度间隔时间
@@ -161,6 +166,10 @@ fi
 
 if [ ! -z "$REDIS_TIMEOUT" ]; then
   sed -i "s/spring.redis.timeout=.*/spring.redis.timeout=$REDIS_TIMEOUT/g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$REDIS_PASSWORD" ]; then
+  sed -i "s/spring.redis.password=.*/spring.redis.password=$REDIS_PASSWORD/g" "$BACKEND_CONFIG_FILE"
 fi
 
 # 自定义字符画缓存配置
@@ -252,6 +261,35 @@ fi
 # 自定义日期时间格式
 if [ ! -z "$DATETIME_FORMAT" ]; then
   sed -i "s|spring.mvc.format.date-time=.*|spring.mvc.format.date-time=$DATETIME_FORMAT|g" "$BACKEND_CONFIG_FILE"
+fi
+
+# 自定义并行处理配置
+if [ ! -z "$CHAR_ART_PARALLEL_MAX_FRAME_THREADS" ]; then
+  sed -i "s|char-art.parallel.max-frame-threads=.*|char-art.parallel.max-frame-threads=$CHAR_ART_PARALLEL_MAX_FRAME_THREADS|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_THREAD_POOL_FACTOR" ]; then
+  sed -i "s|char-art.parallel.thread-pool-factor=.*|char-art.parallel.thread-pool-factor=$CHAR_ART_PARALLEL_THREAD_POOL_FACTOR|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_MIN_THREADS" ]; then
+  sed -i "s|char-art.parallel.min-threads=.*|char-art.parallel.min-threads=$CHAR_ART_PARALLEL_MIN_THREADS|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL" ]; then
+  sed -i "s|char-art.parallel.progress-update-interval=.*|char-art.parallel.progress-update-interval=$CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL" ]; then
+  sed -i "s|char-art.parallel.pixel-progress-interval=.*|char-art.parallel.pixel-progress-interval=$CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_TASK_TIMEOUT" ]; then
+  sed -i "s|char-art.parallel.task-timeout=.*|char-art.parallel.task-timeout=$CHAR_ART_PARALLEL_TASK_TIMEOUT|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY" ]; then
+  sed -i "s|char-art.parallel.progress-cleanup-delay=.*|char-art.parallel.progress-cleanup-delay=$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY|g" "$BACKEND_CONFIG_FILE"
 fi
 
 # 显示配置信息

@@ -161,6 +161,7 @@ curl http://localhost:8080/api/health
 | `REDIS_HOST`                        | Redis主机地址  | Redis服务器的主机名或IP地址    | `localhost`             |
 | `REDIS_PORT`                        | Redis端口    | Redis服务器的端口号         | `6379`                  |
 | `REDIS_DATABASE`                    | Redis数据库索引 | 使用的Redis数据库索引        | `0`                     |
+| `REDIS_PASSWORD`                    | Redis密码    | Redis服务器的认证密码       | 空字符串                  |
 | `REDIS_TIMEOUT`                     | Redis连接超时  | Redis连接超时时间（毫秒）      | `60000`                 |
 | `CHAR_ART_CACHE_TTL`                | 缓存过期时间     | 字符画缓存的生存时间（秒）        | `3600`                  |
 | `CHAR_ART_CACHE_DEFAULT_KEY_PREFIX` | 缓存键前缀      | 字符画缓存键的默认前缀          | `char-art:text:`        |
@@ -182,6 +183,13 @@ curl http://localhost:8080/api/health
 | `DEFAULT_CONFIG_PATH`               | 默认配置路径     | 应用配置文件的默认路径          | `/app/config`           |
 | `DEFAULT_TEMP_PATH`                 | 默认临时文件路径   | 临时文件存储的默认路径          | `/app/data`             |
 | `LOG_FILE_PATH`                     | 日志文件路径     | 日志文件存储的路径            | `/app/logs`             |
+| `CHAR_ART_PARALLEL_MAX_FRAME_THREADS` | 最大并行帧数     | 同时处理的帧数上限            | `4`                     |
+| `CHAR_ART_PARALLEL_THREAD_POOL_FACTOR` | 线程池大小计算因子  | CPU核心数的倍数             | `0.5`                   |
+| `CHAR_ART_PARALLEL_MIN_THREADS`     | 最小线程数      | 线程池的最小线程数            | `1`                     |
+| `CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL` | 进度更新间隔     | 进度更新的时间间隔（毫秒）        | `500`                   |
+| `CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL` | 像素处理进度报告间隔 | 每处理多少像素报告一次进度        | `1000`                  |
+| `CHAR_ART_PARALLEL_TASK_TIMEOUT`    | 任务执行超时时间   | 任务执行的超时时间（毫秒）        | `60000`                 |
+| `CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY` | 进度监听器清理延迟  | 进度监听器清理的延迟时间（毫秒）     | `60000`                 |
 
 #### 使用示例
 
@@ -191,6 +199,7 @@ docker run -d --name char-art-backend \
   -p 8080:8080 \
   -e REDIS_HOST=redis \
   -e REDIS_PORT=6379 \
+  -e REDIS_PASSWORD=your_redis_password \
   -e LOG_LEVEL=DEBUG \
   -e MAX_FILE_SIZE=20MB \
   -e WEBP_PROCESSOR_URL=http://webp-processor:5000 \
