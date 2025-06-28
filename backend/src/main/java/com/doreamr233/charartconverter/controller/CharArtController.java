@@ -1,36 +1,46 @@
 package com.doreamr233.charartconverter.controller;
 
 import cn.hutool.core.io.FileTypeUtil;
+import com.doreamr233.charartconverter.enums.CloseReason;
+import com.doreamr233.charartconverter.enums.EventType;
 import com.doreamr233.charartconverter.exception.FileTypeException;
+import com.doreamr233.charartconverter.event.ProgressUpdateEvent;
 import com.doreamr233.charartconverter.exception.ServiceException;
+import com.doreamr233.charartconverter.listener.SseProgressListener;
+import com.doreamr233.charartconverter.model.ConvertResult;
 import com.doreamr233.charartconverter.model.ProgressInfo;
 import com.doreamr233.charartconverter.service.CharArtService;
 import com.doreamr233.charartconverter.service.ProgressService;
+import com.doreamr233.charartconverter.util.CharArtProcessor;
 import com.doreamr233.charartconverter.util.WebpProcessorClient;
-
+import com.doreamr233.charartconverter.config.ParallelProcessingConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.AsyncEvent;
 import javax.servlet.AsyncListener;
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import java.util.concurrent.TimeUnit;
 
-import com.doreamr233.charartconverter.util.CharArtProcessor;
 
 /**
  * 字符画转换控制器
@@ -59,6 +69,11 @@ public class CharArtController {
      * WebP处理客户端，用于处理WebP动图和健康检查
      */
     private final WebpProcessorClient webpProcessorClient;
+    
+    /**
+     * 并行处理配置
+     */
+    private final ParallelProcessingConfig parallelConfig;
 
     /**
      * WebP处理服务是否启用
@@ -79,11 +94,12 @@ public class CharArtController {
     private final static String defaultColorMode = "grayscale";
 
     /**
-     * 将图片转换为字符画
+     * 将图片转换为字符画（异步接口）
      * <p>
-     * 接收上传的图片文件，根据指定参数将其转换为字符画，并返回转换后的图片数据。
+     * 接收上传的图片文件，根据指定参数异步转换为字符画。
+     * 立即返回进度ID，客户端可通过SSE端点监听转换进度和结果。
      * 支持静态图片（如JPG、PNG）和动态图片（如GIF）的转换。
-     * 转换过程是异步的，可以通过progressId参数跟踪转换进度。
+     * 转换完成后会通过SSE发送包含文件路径和内容类型的结果事件。
      * </p>
      *
      * @param imageFile 上传的图片文件
@@ -91,7 +107,7 @@ public class CharArtController {
      * @param colorMode 颜色模式，可选值为"color"、"colorBackground"、"grayscale"，默认为"grayscale"
      * @param limitSize 是否限制字符画的最大尺寸，默认为true
      * @param progressIdParam 进度ID，用于跟踪转换进度，如果不提供则自动生成
-     * @return 包含转换后图片数据的HTTP响应
+     * @return 包含进度ID的HTTP响应，客户端可用此ID监听转换进度
      */
     @PostMapping("/convert")
     public ResponseEntity<Map<String, String>> convertImage(
@@ -101,8 +117,6 @@ public class CharArtController {
             @RequestParam(value = "limitSize", defaultValue = "true") boolean limitSize,
             @RequestParam(value = "progressId", required = false) String progressIdParam) {
         
-        Path tempFile = null;
-        Path resultFile = null;
         try {
             String originalFilename = imageFile.getOriginalFilename();
             log.info("接收到图片转换请求: {}, 密度: {}, 颜色模式: {}, 限制尺寸: {}", 
@@ -110,7 +124,7 @@ public class CharArtController {
             
             // 使用前端传递的progressId，如果没有则生成一个新的
             String progressId = (progressIdParam != null && !progressIdParam.isEmpty()) 
-                ? progressIdParam : String.valueOf(System.currentTimeMillis());
+                ? progressIdParam : UUID.randomUUID().toString();
             
             log.info("使用进度ID: {}", progressId);
 
@@ -124,126 +138,148 @@ public class CharArtController {
                 throw new FileTypeException("不支持的文件类型: " + fileType);
             }
 
-            // 将上传的文件保存为临时文件，以便多次读取
-            // 提取文件扩展名，确保临时文件具有正确的扩展名
-            String fileExtension = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            } else if (fileType != null) {
-                // 如果无法从文件名获取扩展名，则使用检测到的文件类型
-                fileExtension = "." + fileType;
-            } else {
-                // 默认扩展名
-                fileExtension = ".tmp";
-            }
-            
-            log.info("使用文件扩展名: {}", fileExtension);
-            tempFile = CharArtProcessor.createTempFile("upload_", fileExtension);
-            imageFile.transferTo(tempFile.toFile());
+            // 立即返回进度ID
+            Map<String, String> response = new HashMap<>();
+            response.put("progressId", progressId);
+            response.put("status", "processing");
+            response.put("message", "转换任务已启动，请通过SSE监听进度");
 
-            boolean isGif = originalFilename != null && originalFilename.toLowerCase().endsWith(".gif") && "gif".equals(fileType);
-            boolean isWebp = originalFilename != null && originalFilename.toLowerCase().endsWith(".webp") && "webp".equals(fileType);
-            boolean isAnimated = false;
+            // 异步执行转换任务
+            CompletableFuture.runAsync(() -> {
+                Path tempFile = null;
+                Path resultFile;
+                try {
+                    // 将上传的文件保存为临时文件，以便多次读取
+                    // 提取文件扩展名，确保临时文件具有正确的扩展名
+                    String fileExtension = getString(originalFilename, fileType);
 
-            // 如果是webp格式，判断是否为动图
-            if (isWebp) {
-                isAnimated = CharArtProcessor.isWebpAnimated(tempFile);
-                log.info("WebP图片是否为动图: {}", isAnimated);
-            }
+                    log.info("使用文件扩展名: {}", fileExtension);
+                    tempFile = CharArtProcessor.createTempFile("upload_", fileExtension);
+                    imageFile.transferTo(tempFile.toFile());
 
-            if (isWebp && isAnimated && !isWebpProcessorEnabled) {
-                throw new ServiceException("Webp处理服务未开启，无法处理Webp格式动图");
-            }
+                    boolean isGif = originalFilename != null && originalFilename.toLowerCase().endsWith(".gif") && "gif".equals(fileType);
+                    boolean isWebp = originalFilename != null && originalFilename.toLowerCase().endsWith(".webp") && "webp".equals(fileType);
+                    boolean isAnimated = false;
 
-            // 执行转换
-            byte[] result;
-            try {
-                result = charArtService.convertToCharArt(
-                        Files.newInputStream(tempFile),
-                        originalFilename,
-                        density,
-                        colorMode,
-                        progressId,
-                        limitSize
-                );
-            } catch (IOException e) {
-                // 将IOException包装为ServiceException
-                throw new ServiceException("读取临时文件失败: " + e.getMessage(), e);
-            }
-            
-            // 确定文件类型
-            String contentType = "image/png"; // 默认为PNG
-            String resultExtension = ".png"; // 默认扩展名
-            
-            // 根据文件扩展名设置适当的Content-Type和扩展名
-            if (fileExtension != null && !fileExtension.isEmpty()) {
-                switch (fileExtension.toLowerCase()) {
-                    case ".jpg":
-                    case ".jpeg":
-                        contentType = "image/jpeg";
-                        resultExtension = ".jpg";
-                        break;
-                    case ".png":
-                        contentType = "image/png";
-                        resultExtension = ".png";
-                        break;
-                    case ".gif":
+                    // 如果是webp格式，判断是否为动图
+                    if (isWebp) {
+                        isAnimated = CharArtProcessor.isWebpAnimated(tempFile);
+                        log.info("WebP图片是否为动图: {}", isAnimated);
+                    }
+
+                    if (isWebp && isAnimated && !isWebpProcessorEnabled) {
+                        throw new ServiceException("Webp处理服务未开启，无法处理Webp格式动图");
+                    }
+
+                    // 执行转换
+                    byte[] result;
+                    try {
+                        result = charArtService.convertToCharArt(
+                                Files.newInputStream(tempFile),
+                                originalFilename,
+                                density,
+                                colorMode,
+                                progressId,
+                                limitSize
+                        );
+                    } catch (IOException e) {
+                        // 将IOException包装为ServiceException
+                        throw new ServiceException("读取临时文件失败: " + e.getMessage(), e);
+                    }
+                    
+                    // 确定文件类型
+                    String contentType = "image/png"; // 默认为PNG
+                    String resultExtension = ".png"; // 默认扩展名
+                    
+                    // 根据文件扩展名设置适当的Content-Type和扩展名
+                    if (!fileExtension.isEmpty()) {
+                        switch (fileExtension.toLowerCase()) {
+                            case ".jpg":
+                            case ".jpeg":
+                                contentType = "image/jpeg";
+                                resultExtension = ".jpg";
+                                break;
+                            case ".png":
+                                contentType = "image/png";
+                                resultExtension = ".png";
+                                break;
+                            case ".gif":
+                                contentType = "image/gif";
+                                resultExtension = ".gif";
+                                break;
+                            case ".webp":
+                                contentType = "image/webp";
+                                resultExtension = ".webp";
+                                break;
+                        }
+                    }
+                    
+                    // 如果是GIF或动态WEBP，覆盖设置为对应的内容类型和扩展名
+                    if (isGif) {
                         contentType = "image/gif";
                         resultExtension = ".gif";
-                        break;
-                    case ".webp":
+                    } else if (isWebp && isAnimated) {
                         contentType = "image/webp";
                         resultExtension = ".webp";
-                        break;
-                }
-            }
-            
-            // 如果是GIF或动态WEBP，覆盖设置为对应的内容类型和扩展名
-            if (isGif) {
-                contentType = "image/gif";
-                resultExtension = ".gif";
-            } else if (isWebp && isAnimated) {
-                contentType = "image/webp";
-                resultExtension = ".webp";
-            }
+                    }
 
-            // 将结果保存到临时文件
-            String resultFileName = "result_" + progressId + resultExtension;
-            String tempDir = System.getProperty("java.io.tmpdir");
-            resultFile = Path.of(tempDir, resultFileName);
-            Files.write(resultFile, result);
-            
-            // 构建相对路径（相对于临时目录）
-            String relativePath = resultFile.getFileName().toString();
-            log.info("已保存结果到临时文件: {}", relativePath);
-            
-            // 返回文件路径和内容类型
-            Map<String, String> response = new HashMap<>();
-            response.put("filePath", relativePath);
-            response.put("contentType", contentType);
-            
+                    // 将结果保存到临时文件
+                    String resultFileName = "result_" + progressId + resultExtension;
+                    String tempDir = System.getProperty("java.io.tmpdir");
+                    resultFile = Path.of(tempDir, resultFileName);
+                    Files.write(resultFile, result);
+                    
+                    // 构建相对路径（相对于临时目录）
+                    String relativePath = resultFile.getFileName().toString();
+                    log.info("已保存结果到临时文件: {}", relativePath);
+                    
+                    // 通过SSE发送转换结果
+                    progressService.sendConvertResultEvent(progressId, relativePath, contentType);
+                    
+                    log.info("图片转换完成，进度ID: {}, 文件路径: {}", progressId, relativePath);
+
+                    // 转换完成，发送关闭SSE消息
+                    progressService.sendCloseEvent(progressId, CloseReason.TASK_COMPLETED);
+                } catch (Exception e) {
+                    log.error("异步转换图片失败，进度ID: {}", progressId, e);
+                    // 发送错误事件
+                    progressService.updateProgress(progressId, 0, "转换失败: " + e.getMessage(), "错误", 0, 0, true);
+                } finally {
+                    // 清理临时文件
+                    if (tempFile != null) {
+                        try {
+                            Files.deleteIfExists(tempFile);
+                        } catch (IOException e) {
+                            log.warn("删除临时文件失败: {}", tempFile, e);
+                        }
+                    }
+                }
+            });
+
+            log.info("异步转换任务已启动，进度ID: {}", progressId);
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(response);
-            
+                    
         } catch (Exception e) {
-            // 异常已由全局异常处理器处理，这里只需记录日志
             log.error("图片转换失败", e);
-            // 重新抛出异常，交由全局异常处理器处理
-            // 由于我们已经将IOException包装为ServiceException，这里不需要特殊处理IOException
             throw new ServiceException("图片转换失败: " + e.getMessage(), e);
-        } finally {
-            // 清理临时文件
-            if (tempFile != null) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException e) {
-                    // 这里只是记录警告，不需要抛出ServiceException
-                    // 因为这是清理临时文件的操作，即使失败也不应影响主要业务流程
-                    log.warn("删除临时文件失败: {}", tempFile, e);
-                }
-            }
         }
+    }
+
+    @NotNull
+    private static String getString(String originalFilename, String fileType) {
+        String fileExtension;
+        if (originalFilename != null && originalFilename.contains(".")) {
+            fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        } else if (fileType != null) {
+            // 如果无法从文件名获取扩展名，则使用检测到的文件类型
+            fileExtension = "." + fileType;
+        } else {
+            // 默认扩展名
+            fileExtension = ".tmp";
+        }
+        return fileExtension;
     }
 
     /**
@@ -292,77 +328,167 @@ public class CharArtController {
             @PathVariable String id) {
         log.info("收到进度请求: {}", id);
         
-        // 创建一个5分钟超时的SSE发射器
+        // 创建一个SSE发射器
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
         
-        // 设置SSE特定的响应头
-        emitter.onCompletion(() -> log.info("SSE连接完成: {}", id));
-        emitter.onTimeout(() -> log.info("SSE连接超时: {}", id));
-        emitter.onError((ex) -> log.error("SSE连接错误: {}, 错误: {}", id, ex.getMessage()));
+        // 创建SSE监听器
+        SseProgressListener listener = new SseProgressListener(id, emitter);
+        
+        // 注册监听器
+        progressService.addProgressListener(listener);
+        
+        // 设置错误处理
+        emitter.onError((ex) -> {
+            // 检查是否是正常的任务完成导致的连接关闭
+            if (ex instanceof java.io.IOException && ex.getMessage() != null && 
+                (ex.getMessage().contains("Broken pipe") || ex.getMessage().contains("Connection reset"))) {
+                log.debug("SSE连接正常关闭: {}, 关闭原因: {}", id, ex.getMessage());
+            } else {
+                log.error("SSE连接错误: {}, 错误: {}", id, ex.getMessage());
+            }
+            progressService.removeProgressListener(listener);
+        });
+        
+        emitter.onCompletion(() -> {
+            log.info("SSE连接完成: {}", id);
+            progressService.removeProgressListener(listener);
+        });
+        
+        emitter.onTimeout(() -> {
+            log.info("SSE连接超时: {}", id);
+            progressService.removeProgressListener(listener);
+        });
         
         ExecutorService executor = Executors.newSingleThreadExecutor();
         
-        // 在执行线程中添加心跳机制
-        executor.execute(() -> {
+        // 在单独的线程中处理SSE
+        executor.submit(() -> {
             try {
-                ProgressInfo initProgressInfo =  new ProgressInfo(id, 0, "连接已建立");
-                log.info(initProgressInfo.toString());
-                // 初始化连接
-                emitter.send(SseEmitter.event().name("init").data(initProgressInfo, MediaType.APPLICATION_JSON));
-
-                long lastHeartbeat = System.currentTimeMillis();
-                long lastProgressInfoTimestamp = System.currentTimeMillis();
-                int heartbeatCount = 0; // 心跳计数器
-
-                while (true) {
-                    ProgressInfo progressInfo = progressService.getProgress(id);
-
-                    long now = System.currentTimeMillis();
-                    long progressInfoTimestamp = progressInfo.getTimestamp();
-
-                    if (progressInfo.getPercentage() >= 0 && progressInfoTimestamp > lastProgressInfoTimestamp) {
-                        log.info(progressInfo.toString());
-                        // 发送进度更新
-                        emitter.send(SseEmitter.event().name("progress").data(progressInfo, MediaType.APPLICATION_JSON));
-                        lastProgressInfoTimestamp = progressInfo.getTimestamp();
-                        heartbeatCount = 0; // 收到进度更新时重置心跳计数
-
-                        // 如果进度达到100%且isDone为true，发送close事件并关闭连接
-                        if (progressInfo.getPercentage() >= 100 && progressInfo.isDone()) {
-                            log.info("进度完成，发送关闭事件: {}", id);
-                            emitter.send(SseEmitter.event().name("close").data("连接关闭中", MediaType.TEXT_PLAIN));
-                            emitter.complete();
-                            break;
-                        }
-                    } else {
-                        // 如果没有有效进度信息，则定期发送心跳消息保持连接
-                        if (now - lastHeartbeat > 10000) { // 10秒发送一次心跳
-                            heartbeatCount++; // 增加心跳计数
-                            log.debug("发送心跳 #{}: {}", heartbeatCount, id);
-                            emitter.send(SseEmitter.event().name("heartbeat").data("ping", MediaType.TEXT_PLAIN));
-                            lastHeartbeat = now;
+                // 发送初始化进度信息
+                ProgressInfo currentProgress = progressService.getProgress(id);
+                if (currentProgress != null) {
+                    emitter.send(SseEmitter.event()
+                            .name("progress")
+                            .data(currentProgress));
+                }
+                
+                // 检查是否有待处理的事件
+                ConvertResult latestEvent = progressService.getLatestEvent(id);
+                if (latestEvent != null) {
+                    // 转换结果事件直接发送ConvertResult对象
+                    emitter.send(SseEmitter.event()
+                            .name("convertResult")
+                            .data(latestEvent));
+                }
+                
+                // 使用阻塞队列等待事件
+                while (listener.isActive()) {
+                    try {
+                        // 等待新事件，超时时间为10s
+                        ProgressUpdateEvent event = listener.waitForEvent(10, TimeUnit.SECONDS);
+                        if (event != null) {
+                            // 处理接收到的事件
+                            handleProgressEvent(emitter, event);
                             
-                            // 如果心跳计数达到12次（约2分钟），发送关闭事件
-                            if (heartbeatCount >= 12) {
-                                log.info("心跳计数达到12次，发送关闭事件: {}", id);
-                                emitter.send(SseEmitter.event().name("close").data("连接关闭中", MediaType.TEXT_PLAIN));
-                                emitter.complete();
+                            // 如果是关闭事件，完成连接
+                            if (event.getEventType() == EventType.CLOSE_EVENT) {
+                                // 根据关闭原因决定是否记录日志
+                                if (event.getCloseReason() == CloseReason.TASK_COMPLETED) {
+                                    log.info("任务完成，正常关闭SSE连接: {}", id);
+                                } else {
+                                    log.info("收到关闭事件，准备完成SSE连接: {}, 原因: {}", id, event.getCloseReason());
+                                }
+                                try {
+                                    emitter.complete();
+                                } catch (IllegalStateException e) {
+                                    log.debug("SSE连接已完成，无需重复关闭: {}", e.getMessage());
+                                }
                                 break;
                             }
+                        } else {
+                            // 超时，发送心跳
+                            emitter.send(SseEmitter.event()
+                                    .name("heartbeat")
+                                    .data("ping"));
                         }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        log.info("SSE处理线程被中断: {}", id);
+                        break;
                     }
-
-                    Thread.sleep(500);
                 }
             } catch (Exception e) {
-                log.error("处理SSE连接时出错: {}, 错误: {}", id, e.getMessage());
-                emitter.completeWithError(e);
+                // 检查是否是正常地连接关闭导致的异常
+                if (e instanceof java.io.IOException && e.getMessage() != null && 
+                    (e.getMessage().contains("Broken pipe") || e.getMessage().contains("Connection reset") || 
+                     e.getMessage().contains("Connection closed"))) {
+                    log.debug("SSE连接正常关闭: {}, 原因: {}", id, e.getMessage());
+                } else {
+                    log.error("SSE处理异常: {}, 错误: {}", id, e.getMessage());
+                    try {
+                        // 发送错误关闭事件
+                        progressService.sendCloseEvent(id, CloseReason.ERROR_OCCURRED);
+                        // 等待一小段时间确保客户端接收到关闭事件
+                        long progressUpdateInterval = parallelConfig != null ? parallelConfig.getProgressUpdateInterval() : 500L;
+                        Thread.sleep(progressUpdateInterval);
+                        // 检查emitter状态，避免在已完成的连接上调用completeWithError
+                        emitter.completeWithError(e);
+                    } catch (IllegalStateException ex) {
+                        log.debug("SSE连接已完成，无法发送错误: {}", ex.getMessage());
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        log.debug("等待过程中被中断: {}", ex.getMessage());
+                    } catch (Exception ex) {
+                        log.error("完成SSE时发生错误: {}", ex.getMessage());
+                    }
+                }
             } finally {
+                // 确保移除监听器
+                progressService.removeProgressListener(listener);
                 executor.shutdown();
             }
         });
         
         return emitter;
+    }
+    
+
+    
+    /**
+     * 处理进度事件
+     */
+    private void handleProgressEvent(SseEmitter emitter, ProgressUpdateEvent event) throws Exception {
+        String eventName;
+        Object eventData;
+        
+        switch (event.getEventType()) {
+            case PROGRESS_UPDATE:
+                eventName = "progress";
+                eventData = event.getProgressInfo();
+                break;
+            case CONVERT_RESULT:
+                eventName = "convertResult";
+                // 转换结果使用ConvertResult传输
+                eventData = event.getConvertResult();
+                break;
+            case CLOSE_EVENT:
+                eventName = "close";
+                // 关闭事件使用包含关闭原因的数据结构
+                Map<String, Object> closeData = new HashMap<>();
+                closeData.put("progressInfo", event.getProgressInfo());
+                closeData.put("closeReason", event.getCloseReason());
+                closeData.put("message", event.getProgressInfo().getMessage());
+                eventData = closeData;
+                break;
+            default:
+                eventName = "event";
+                eventData = event.getProgressInfo();
+                break;
+        }
+        
+        emitter.send(SseEmitter.event()
+                .name(eventName)
+                .data(eventData));
     }
      
     /**
@@ -375,21 +501,39 @@ public class CharArtController {
      * </p>
      *
      * @param id 进度ID，用于标识要关闭的特定连接
+     * @param closeReason 关闭原因，可选参数，用于决定日志级别
      * @return 包含操作结果的HTTP响应
      */
-    @PostMapping("/progress/{id}/close")
+    @PostMapping(value = "/progress/close/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> closeProgress(
-            @PathVariable String id) {
-        log.info("接收到关闭进度连接请求: {}", id);
+            @PathVariable String id,
+            @RequestParam(required = false) String closeReason) {
+        
+        // 根据关闭原因决定日志级别
+        if ("ERROR_OCCURRED".equals(closeReason) || "HEARTBEAT_TIMEOUT".equals(closeReason)) {
+            log.warn("接收到关闭进度连接请求: {}, 原因: {}", id, closeReason);
+        } else {
+            log.info("接收到关闭进度连接请求: {}, 原因: {}", id, closeReason != null ? closeReason : "TASK_COMPLETED");
+        }
+        
         Map<String, Object> result = new HashMap<>();
         
         try {
-            progressService.sendCloseEvent(id);
+            // 根据关闭原因发送相应的关闭事件
+            CloseReason reason = CloseReason.parseCloseReason(closeReason);
+            progressService.sendCloseEvent(id, reason);
+            
             result.put("success", true);
             result.put("message", "进度连接已关闭");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            log.error("关闭进度连接失败: {}, 错误: {}", id, e.getMessage());
+            // 只有在非正常关闭时才记录错误日志
+            if ("ERROR_OCCURRED".equals(closeReason)) {
+                log.error("关闭进度连接失败: {}, 错误: {}", id, e.getMessage());
+            } else {
+                log.debug("关闭进度连接时发生异常: {}, 错误: {}", id, e.getMessage());
+            }
+            
             result.put("success", false);
             result.put("message", "关闭进度连接失败: " + e.getMessage());
             return ResponseEntity.ok(result);
@@ -492,7 +636,7 @@ public class CharArtController {
         
         try {
             // URL解码文件路径
-            String decodedFilePath = java.net.URLDecoder.decode(filePath, "UTF-8");
+            String decodedFilePath = java.net.URLDecoder.decode(filePath, StandardCharsets.UTF_8);
             log.info("解码后的文件路径: {}", decodedFilePath);
             
             // 构建完整的文件路径（基于系统临时目录）
@@ -543,28 +687,32 @@ public class CharArtController {
                             // 删除文件
                             Files.delete(fullPath);
                             log.info("文件已成功传输并删除: {}", fullPath);
-                            
+
                             // 检查目录是否为空，如果为空则删除
-                            if (Files.exists(dirPath) && Files.list(dirPath).findAny().isEmpty()) {
-                                Files.delete(dirPath);
-                                log.info("空文件夹已删除: {}", dirPath);
+                            if (Files.exists(dirPath)) {
+                                try (var stream = Files.list(dirPath)) {
+                                    if (stream.findAny().isEmpty()) {
+                                        Files.delete(dirPath);
+                                        log.info("空文件夹已删除: {}", dirPath);
+                                    }
+                                }
                             }
                         }
                     } catch (Exception e) {
                         log.error("删除文件或文件夹时出错: {}", e.getMessage());
                     }
                 }
-                
+
                 @Override
                 public void onTimeout(AsyncEvent event) {
                     // 不需要实现
                 }
-                
+
                 @Override
                 public void onError(AsyncEvent event) {
                     // 不需要实现
                 }
-                
+
                 @Override
                 public void onStartAsync(AsyncEvent event) {
                     // 不需要实现
@@ -572,7 +720,8 @@ public class CharArtController {
             });
             
             // 设置异步请求超时时间
-            asyncContext.setTimeout(600000);
+            long taskTimeout = parallelConfig != null ? parallelConfig.getTaskTimeout() : 600000L;
+            asyncContext.setTimeout(taskTimeout);
             
             // 返回图片数据
             ResponseEntity<byte[]> responseEntity = ResponseEntity.ok()

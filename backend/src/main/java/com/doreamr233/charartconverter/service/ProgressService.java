@@ -1,6 +1,10 @@
 package com.doreamr233.charartconverter.service;
 
+import com.doreamr233.charartconverter.enums.CloseReason;
+import com.doreamr233.charartconverter.event.ProgressUpdateEvent;
+import com.doreamr233.charartconverter.model.ConvertResult;
 import com.doreamr233.charartconverter.model.ProgressInfo;
+import com.doreamr233.charartconverter.listener.ProgressListener;
 
 
 /**
@@ -58,6 +62,30 @@ public interface ProgressService {
     ProgressInfo getProgress(String id);
     
     /**
+     * 获取指定ID的最新事件信息
+     * <p>
+     * 根据给定的进度ID获取对应的最新事件信息对象。
+     * 如果指定ID的事件信息不存在，则返回null。
+     * </p>
+     *
+     * @param id 进度ID，用于唯一标识一个转换任务
+     * @return 事件信息对象，如果不存在则返回null
+     */
+    ConvertResult getLatestEvent(String id);
+    
+    /**
+     * 检查指定ID是否有新的事件信息
+     * <p>
+     * 根据给定的进度ID和时间戳检查是否有新的事件信息。
+     * </p>
+     *
+     * @param id 进度ID，用于唯一标识一个转换任务
+     * @param lastEventTimestamp 上次获取事件的时间戳
+     * @return 如果有新事件则返回true，否则返回false
+     */
+    boolean hasNewEvent(String id, long lastEventTimestamp);
+    
+    /**
      * 发送关闭事件
      * <p>
      * 创建并发送一个包含关闭信息的进度对象，通知客户端连接即将关闭。
@@ -68,4 +96,63 @@ public interface ProgressService {
      * @param id 进度ID，用于唯一标识要关闭的转换任务
      */
     void sendCloseEvent(String id);
+    
+    /**
+     * 发送带关闭原因的关闭事件
+     * <p>
+     * 创建并发送一个包含关闭信息和关闭原因的进度对象，通知客户端连接即将关闭。
+     * 该方法会将进度设置为100%，并标记为已完成。
+     * 调用此方法后，会自动安排清理任务，在一段时间后移除相关进度信息。
+     * </p>
+     *
+     * @param id 进度ID，用于唯一标识要关闭的转换任务
+     * @param closeReason 关闭原因，用于区分不同类型的关闭事件
+     */
+    void sendCloseEvent(String id, CloseReason closeReason);
+    
+    /**
+     * 发送转换结果事件
+     * <p>
+     * 发送包含转换结果信息的进度对象，通知客户端转换已完成并提供结果数据。
+     * 该方法会将进度设置为100%，标记为已完成，并包含结果文件路径和内容类型。
+     * </p>
+     *
+     * @param id 进度ID，用于唯一标识转换任务
+     * @param filePath 结果文件的相对路径
+     * @param contentType 结果文件的内容类型
+     */
+    void sendConvertResultEvent(String id, String filePath, String contentType);
+    
+    /**
+     * 添加进度监听器
+     * <p>
+     * 注册一个进度监听器，用于接收进度更新事件。
+     * 监听器将根据其关注的进度ID接收相应的事件通知。
+     * </p>
+     *
+     * @param listener 进度监听器
+     */
+    void addProgressListener(ProgressListener listener);
+    
+    /**
+     * 移除进度监听器
+     * <p>
+     * 取消注册指定的进度监听器。
+     * </p>
+     *
+     * @param listener 要移除的进度监听器
+     */
+    void removeProgressListener(ProgressListener listener);
+    
+    /**
+     * 移除指定进度ID的所有监听器
+     * <p>
+     * 取消注册所有关注指定进度ID的监听器。
+     * 通常在进度完成或取消时调用。
+     * </p>
+     *
+     * @param progressId 进度ID
+     */
+    void removeListenersForProgress(String progressId);
+
 }
