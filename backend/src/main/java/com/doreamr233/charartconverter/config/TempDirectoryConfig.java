@@ -28,8 +28,9 @@ public class TempDirectoryConfig {
 
     /**
      * 临时目录路径，从配置文件中读取
+     * 如果配置文件中未设置，则使用系统默认临时目录
      */
-    @Value("${java.io.tmpdir:/tmp}")
+    @Value("${char-art.temp-directory:#{systemProperties['java.io.tmpdir']}}")
     private String tempDirectory;
 
     /**
@@ -55,12 +56,24 @@ public class TempDirectoryConfig {
      * <p>
      * 在Bean初始化后检查临时目录是否存在，
      * 如果不存在则创建，并验证目录的可读写权限。
+     * 支持相对路径和绝对路径，自动处理跨平台路径格式。
      * </p>
      */
     @PostConstruct
     public void initTempDirectory() {
         try {
+            // 处理相对路径，转换为绝对路径
             Path tempPath = Paths.get(tempDirectory);
+            if (!tempPath.isAbsolute()) {
+                // 相对路径基于当前工作目录
+                tempPath = Paths.get(System.getProperty("user.dir")).resolve(tempDirectory);
+                tempDirectory = tempPath.toString();
+                log.info("相对路径转换为绝对路径: {}", tempDirectory);
+            }
+            
+            // 规范化路径（处理.和..等）
+            tempPath = tempPath.normalize().toAbsolutePath();
+            tempDirectory = tempPath.toString();
             
             // 如果目录不存在，则创建
             if (!Files.exists(tempPath)) {
@@ -77,11 +90,19 @@ public class TempDirectoryConfig {
                 log.warn("临时目录不可写: {}", tempDirectory);
             }
             
-            log.info("临时目录配置完成: {}", tempDirectory);
+            // 检查是否为目录
+            if (!tempDir.isDirectory()) {
+                throw new RuntimeException("指定的路径不是目录: " + tempDirectory);
+            }
+            
+            log.info("临时目录配置完成: {} (操作系统: {})", tempDirectory, System.getProperty("os.name"));
             
         } catch (Exception e) {
             log.error("初始化临时目录失败: {}", tempDirectory, e);
-            throw new RuntimeException("初始化临时目录失败: " + e.getMessage(), e);
+            // 回退到系统默认临时目录
+            String systemTempDir = System.getProperty("java.io.tmpdir");
+            log.warn("回退到系统默认临时目录: {}", systemTempDir);
+            tempDirectory = systemTempDir;
         }
     }
 }
