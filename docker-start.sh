@@ -250,7 +250,7 @@ fi
 
 # 设置临时文件目录为数据卷目录
 if [ ! -z "$DEFAULT_TEMP_PATH" ]; then
-  sed -i "s|java.io.tmpdir=.*|java.io.tmpdir=$DEFAULT_TEMP_PATH|g" "$BACKEND_CONFIG_FILE"
+  sed -i "s|char-art.temp-directory=.*|char-art.temp-directory=$DEFAULT_TEMP_PATH|g" "$BACKEND_CONFIG_FILE"
 fi
 
 # 自定义时区配置
@@ -436,6 +436,12 @@ if [ -f "$SUPERVISORD_CONFIG_PATH/supervisord.conf" ]; then
   
   sed -i "s|\${BACKEND_PATH}|$BACKEND_PATH|g" $SUPERVISORD_CONFIG_PATH/supervisord.conf
   echo "supervisord配置文件中的BACKEND_PATH已替换为: $BACKEND_PATH"
+  
+  sed -i "s|\${DEFAULT_TEMP_PATH}|$DEFAULT_TEMP_PATH|g" $SUPERVISORD_CONFIG_PATH/supervisord.conf
+  echo "supervisord配置文件中的DEFAULT_TEMP_PATH已替换为: $DEFAULT_TEMP_PATH"
+  
+  sed -i "s|\${LANG}|$LANG|g" $SUPERVISORD_CONFIG_PATH/supervisord.conf
+  echo "supervisord配置文件中的LANG已替换为: $LANG"
 fi
 
 
