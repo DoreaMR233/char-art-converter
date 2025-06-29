@@ -193,24 +193,26 @@ curl -f http://localhost:8081/api/health
 
 ## 配置参数
 
-### 配置文件变量
+### 配置变量列表
 
-| 变量名称                       | 变量中文名       | 变量作用          | 变量默认值                          |
-|----------------------------|-------------|---------------|--------------------------------|
-| `PORT`                     | 服务端口        | WebP 处理服务监听端口 | `8081`                         |
-| `LOG_LEVEL`                | 日志级别        | 应用日志输出级别      | `INFO`                         |
-| `LOG_FILE`                 | 日志文件路径      | 日志文件存储路径      | `/app/logs/webp-processor.log` |
-| `TIMEZONE`                 | 时区设置        | 应用程序时区配置      | `Asia/Shanghai`                |
-| `TEMP_FILE_TTL`            | 临时文件保留时间    | 临时文件自动清理时间（秒） | `3600`                         |
-| `TEMP_DIR`                 | 临时文件目录      | 临时文件存储目录      | `/app/data`                    |
-| `DEBUG`                    | 调试模式        | 是否启用调试模式      | `False`                        |
-| `MAX_CONTENT_LENGTH`       | 最大上传文件大小    | 请求内容最大长度（字节）  | `10485760`                     |
-| `REDIS_HOST`               | Redis 主机地址  | Redis 服务器地址   | `localhost`                    |
-| `REDIS_PORT`               | Redis 端口    | Redis 服务器端口   | `6379`                         |
-| `REDIS_DB`                 | Redis 数据库索引 | Redis 数据库编号   | `0`                            |
-| `REDIS_PASSWORD`           | Redis 密码    | Redis 服务器密码   | 空字符串                         |
-| `PROGRESS_UPDATE_INTERVAL` | 进度更新间隔      | 进度信息更新频率（秒）   | `0.5`                          |
-| `JAVA_BACKEND_URL`         | 后端服务地址      | Java 后端服务 URL | `http://localhost:8080`        |
+以下是可通过环境变量配置的参数列表：
+
+| 环境变量名称                     | 环境变量中文名      | 环境变量作用            | 环境变量默认值                     | 环境变量对应配置文件参数              |
+|----------------------------|---------------|-------------------|------------------------------|-----------------------------|
+| `TIMEZONE`                 | 时区设置          | 应用程序时区配置          | `Asia/Shanghai`              | `TIMEZONE`                  |
+| `PORT`                     | 服务端口          | WebP 处理服务监听端口      | `8081`                       | `PORT`                      |
+| `LOG_LEVEL`                | 日志级别          | 应用日志输出级别          | `INFO`                       | `LOG_LEVEL`                 |
+| `LOG_FILE_PATH`            | 日志文件路径        | 日志文件存储目录          | `/app/logs`                  | `LOG_FILE`                  |
+| `TEMP_FILE_TTL`            | 临时文件保留时间      | 临时文件自动清理时间（秒）     | `3600`                       | `TEMP_FILE_TTL`             |
+| `TEMP_DIR_PATH`            | 临时文件目录        | 临时文件存储目录          | `/app/data`                  | `TEMP_DIR`                  |
+| `DEBUG`                    | 调试模式          | 是否启用调试模式          | `False`                      | `DEBUG`                     |
+| `MAX_CONTENT_LENGTH`       | 最大上传文件大小      | 请求内容最大长度（字节）      | `10485760`                   | `MAX_CONTENT_LENGTH`        |
+| `REDIS_HOST`               | Redis 主机地址    | Redis 服务器地址        | `localhost`                  | `REDIS_HOST`                |
+| `REDIS_PORT`               | Redis 端口      | Redis 服务器端口        | `6379`                       | `REDIS_PORT`                |
+| `REDIS_DB`                 | Redis 数据库索引  | Redis 数据库编号        | `0`                          | `REDIS_DB`                  |
+| `REDIS_PASSWORD`           | Redis 密码      | Redis 服务器密码        | 空字符串                         | `REDIS_PASSWORD`            |
+| `PROGRESS_UPDATE_INTERVAL` | 进度更新间隔        | 进度信息更新频率（秒）       | `0.5`                        | `PROGRESS_UPDATE_INTERVAL`  |
+| `JAVA_BACKEND_URL`         | 后端服务地址        | Java 后端服务 URL     | `http://localhost:8080`      | `JAVA_BACKEND_URL`          |
 
 #### 使用示例
 

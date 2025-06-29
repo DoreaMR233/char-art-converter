@@ -43,7 +43,7 @@ class BackgroundScheduler:
                 
                 self.scheduler.start()
                 self.is_running = True
-                logger.info("后台调度器已启动")
+                logger.debug("后台调度器已启动")
             except Exception as e:
                 logger.error(f"启动调度器失败: {e}")
     
@@ -59,7 +59,7 @@ class BackgroundScheduler:
             try:
                 self.scheduler.shutdown(wait=True)
                 self.is_running = False
-                logger.info("后台调度器已关闭")
+                logger.debug("后台调度器已关闭")
             except Exception as e:
                 logger.error(f"关闭调度器失败: {e}")
 

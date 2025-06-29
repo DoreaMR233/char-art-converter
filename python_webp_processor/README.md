@@ -312,61 +312,41 @@ Docker部署提供了更简便的部署方式，包含了所有必要的依赖�
 
 ### 配置文件说明
 
-项目使用环境变量进行配置，支持通过 `.env` 文件设置。主要配置项在 `.env` 文件中，以下是各配置项的详细说明：
+本项目使用 `.env.example` 作为配置模板文件。
 
-#### 服务器配置
+#### 首次使用步骤
 
-```properties
-# 服务监听端口
-PORT=8081
-# 调试模式开关
-DEBUG=False
-# 最大文件上传大小（字节）
-MAX_CONTENT_LENGTH=10485760
-```
+1. 复制模板文件：
+   ```bash
+   cp .env.example .env
+   ```
 
-#### 临时文件配置
+2. 根据你的环境修改 `.env` 中的配置项
 
-```properties
-# 临时文件存储目录
-TEMP_DIR=./data
-# 临时文件保留时间（秒）
-TEMP_FILE_TTL=3600
-```
+#### 重要说明
 
-#### 日志配置
+- `.env` 文件已被添加到 `.gitignore` 中，不会被提交到版本控制
+- 请不要直接修改 `.env.example` 文件，除非需要更新默认配置
+- 如果需要添加新的配置项，请同时更新模板文件
 
-```properties
-# 日志级别
-LOG_LEVEL=INFO
-```
+#### 配置参数说明
 
-#### Redis配置
-
-```properties
-# Redis服务器地址
-REDIS_HOST=localhost
-# Redis服务器端口
-REDIS_PORT=6379
-# Redis数据库编号
-REDIS_DB=0
-# Redis连接密码（可选）
-REDIS_PASSWORD=
-```
-
-#### 进度监控配置
-
-```properties
-# 进度更新间隔（秒）
-PROGRESS_UPDATE_INTERVAL=0.5
-```
-
-配置说明：
-
-- **调试模式**：开启后会输出详细的日志信息，仅在开发环境使用
-- **文件大小限制**：建议根据服务器性能和网络带宽调整
-- **临时文件清理**：系统会自动清理超过TTL时间的临时文件
-- **Redis连接**：用于缓存处理进度和任务队列，确保Redis服务可用
+| 变量名称 | 变量中文名 | 变量作用 | 变量默认值 |
+|---------|-----------|----------|----------|
+| TIMEZONE | 时区设置 | 设置应用程序的时区 | Asia/Shanghai |
+| PORT | 服务端口 | 设置WebP处理服务监听端口 | 8081 |
+| LOG_LEVEL | 日志级别 | 设置日志输出级别 | INFO |
+| LOG_FILE | 日志文件路径 | 指定日志文件的存储路径 | /app/logs/webp-processor.log |
+| TEMP_FILE_TTL | 临时文件保留时间 | 临时文件的保留时间（秒） | 3600 |
+| TEMP_DIR | 临时文件目录 | 临时文件的存储目录 | /app/data |
+| DEBUG | 调试模式 | 是否启用调试模式 | False |
+| MAX_CONTENT_LENGTH | 最大上传文件大小 | 限制上传文件的最大大小（字节） | 10485760 |
+| REDIS_HOST | Redis主机地址 | Redis服务器的主机地址 | localhost |
+| REDIS_PORT | Redis端口 | Redis服务器的端口号 | 6379 |
+| REDIS_DB | Redis数据库索引 | 使用的Redis数据库索引 | 0 |
+| REDIS_PASSWORD | Redis密码 | Redis服务器的连接密码 | （空） |
+| PROGRESS_UPDATE_INTERVAL | 进度更新间隔 | 进度更新的时间间隔（秒） | 0.5 |
+| JAVA_BACKEND_URL | Java后端服务URL | Java后端服务的访问地址 | http://localhost:8080 |
 
 ## 许可证
 

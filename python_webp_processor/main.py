@@ -1,104 +1,82 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+"""应用程序主入口
+
+此模块负责创建、配置和启动FastAPI应用，主要功能包括：
+- 配置日志记录器。
+- 定义应用生命周期事件，如启动和关闭时的清理任务。
+- 创建FastAPI应用实例，并挂载所有API路由。
+- 配置CORS中间件，允许跨域请求。
+- 使用uvicorn作为ASGI服务器启动应用。
+"""
+
 from contextlib import asynccontextmanager
+import asyncio
 import logging
-import atexit
 import shutil
 
-from api.progress import set_app_ref
-from config import  PORT, DEBUG, TEMP_DIR, SHOULD_CLEANUP_TEMP_DIR
-from utils.utils import cleanup_temp_files
-from utils.scheduler import init_scheduler, shutdown_scheduler
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.health import router as health_router
+from api.progress import router as progress_router
+from api.webp import router as webp_router
+from config import (DEBUG, LOG_FILE, LOG_LEVEL, PORT, SHOULD_CLEANUP_TEMP_DIR,
+                    TEMP_DIR)
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-# 注册退出时的清理函数
 def cleanup_on_exit():
-    """应用退出时的清理函数。
-    
-    执行以下清理操作：
-    1. 关闭后台调度器
-    2. 清理过期的临时文件
-    3. 删除空的临时目录
+    """在应用退出时执行清理操作。
+
+    如果配置中 `SHOULD_CLEANUP_TEMP_DIR` 为True，则会递归删除 `TEMP_DIR` 目录。
     """
-    logger.info("应用正在退出，开始清理...")
-    
-    # 关闭调度器
-    shutdown_scheduler()
-    
-    # 清理临时文件
-    cleanup_temp_files()
-    
-    # 如果需要，删除整个临时目录
     if SHOULD_CLEANUP_TEMP_DIR:
         try:
             shutil.rmtree(TEMP_DIR)
-            logger.info(f"已删除临时目录: {TEMP_DIR}")
-        except Exception as e:
-            logger.error(f"删除临时目录时出错: {str(e)}")
-    
-    logger.info("清理完成")
-
-# 注册退出处理函数
-atexit.register(cleanup_on_exit)
+            logger.info(f"临时目录已清理: {TEMP_DIR}")
+        except OSError as e:
+            logger.error(f"清理临时目录失败: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
-    # 启动时执行
-    logger.info("FastAPI应用启动中...")
-    
-    # 清理过期的临时文件
-    cleanup_temp_files()
-    
-    # 初始化并启动调度器
-    init_scheduler()
-    
-    # 设置应用引用
-    set_app_ref(app)
-    
-    logger.info(f"FastAPI WebP处理服务已启动，监听端口: {PORT}")
-    
+    """FastAPI应用的生命周期管理器。
+
+    在应用启动时记录日志，在应用关闭时执行清理操作。
+
+    Args:
+        app (FastAPI): FastAPI应用实例。
+    """
+    logger.info("应用开始启动...")
     yield
-    
-    # 关闭时执行
-    logger.info("FastAPI应用关闭中...")
-    
-    # 关闭Redis连接
-    from api.progress import close_redis
-    await close_redis()
-    
+    logger.info("应用正在关闭...")
     cleanup_on_exit()
 
 def create_app() -> FastAPI:
-    """
-    创建并配置FastAPI应用
-    
+    """创建并配置FastAPI应用实例。
+
+    - 初始化FastAPI应用并设置生命周期管理器。
+    - 配置CORS中间件以允许所有来源的跨域请求。
+    - 注册健康检查、进度和WebP处理相关的API路由。
+
     Returns:
-        FastAPI: 配置好的FastAPI应用实例
+        FastAPI: 配置完成的FastAPI应用实例。
     """
-    app = FastAPI(
-        title="WebP Processor API",
-        description="WebP动图处理服务",
-        version="1.0.0",
-        lifespan=lifespan
-    )
-    
-    # 配置CORS，允许所有来源的请求
+    app = FastAPI(lifespan=lifespan)
+
+    # 添加CORS中间件，允许所有来源、方法和头部的跨域请求
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
-    # 注册路由
-    from api import webp, health, progress
-    app.include_router(webp.router, prefix="/api", tags=["webp"])
-    app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(progress.router, prefix="/api", tags=["progress"])
-    
+
+    # 包含各个模块的API路由
+    app.include_router(health_router, prefix="/api", tags=["Health"])
+    app.include_router(progress_router, prefix="/api", tags=["Progress"])
+    app.include_router(webp_router, prefix="/api", tags=["WebP"])
+
     return app
 
 # 创建应用实例

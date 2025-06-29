@@ -1,3 +1,9 @@
+"""
+@file: progress.py
+@description: 进度管理API
+
+提供通过Server-Sent Events (SSE)实时更新任务进度的功能，并允许客户端查询、创建和关闭进度跟踪。
+"""
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +13,7 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 import aioredis
 from aioredis import Redis
@@ -16,15 +22,20 @@ from sse_starlette.sse import EventSourceResponse
 
 from config import PROGRESS_UPDATE_INTERVAL
 from model.responseModel import ProgressCreateResponse, SuccessResponse
+from utils.utils import cleanup_temp_files
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # Redis配置
+#: str: Redis服务器的主机名，从环境变量 `REDIS_HOST` 读取，默认为 'localhost'。
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+#: int: Redis服务器的端口号，从环境变量 `REDIS_PORT` 读取，默认为 6379。
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+#: int: Redis数据库索引，从环境变量 `REDIS_DB` 读取，默认为 0。
 REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+#: str: Redis服务器的密码，从环境变量 `REDIS_PASSWORD` 读取，默认为 ''。
 REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', '')
 
 # Redis连接池
@@ -148,13 +159,12 @@ def send_close_event(reason: str = "completed", message: str = "连接关闭中"
         "reason": reason
     }, event="close")
 
-@router.post('/progress/create', response_model=ProgressCreateResponse)
+@router.post('/progress/create', response_model=ProgressCreateResponse, summary="创建新的进度记录")
 async def create_progress():
-    """
-    创建新的进度跟踪任务
-    
+    """在Redis中为新的任务初始化一个进度记录。
+
     Returns:
-        ProgressCreateResponse: 包含新任务ID的响应
+        ProgressCreateResponse: 包含新创建的任务ID的响应。
     """
     task_id = str(uuid.uuid4())
     max_retries = 3
@@ -193,7 +203,7 @@ async def create_progress():
                 lambda redis: redis.expire(f"clients:{task_id}", 86400)
             )
             
-            logger.info(f"创建新的进度跟踪任务: {task_id}")
+            logger.debug(f"创建新的进度跟踪任务: {task_id}")
             
             return ProgressCreateResponse(
                 task_id=task_id,
@@ -218,8 +228,18 @@ async def create_progress():
 
 
 async def progress_event_generator(task_id: str, client_id: str):
-    """生成SSE事件的异步生成器"""
-    logger.info(f"开始为任务 {task_id} 生成进度事件，客户端ID: {client_id}")
+    """服务器发送事件 (SSE) 生成器。
+
+    为指定的 `task_id` 创建一个SSE流，定期发送心跳信号并推送进度更新。
+
+    Args:
+        task_id (str): 要订阅的任务ID。
+        client_id (str): 唯一标识连接的客户端ID。
+
+    Yields:
+        Dict[str, Any]: SSE格式的事件字典，用于发送给客户端。
+    """
+    logger.debug(f"开始为任务 {task_id} 生成进度事件，客户端ID: {client_id}")
     
     # 跟踪已发送的消息索引
     last_sent_index = -1
@@ -254,7 +274,7 @@ async def progress_event_generator(task_id: str, client_id: str):
 
                     # 如果发现最后一条进度信息标记为完成，发送任务完成关闭事件并退出
                     if info.get('is_done', False):
-                        logger.info(f"任务 {task_id} 已完成，发送任务完成关闭事件")
+                        logger.debug(f"任务 {task_id} 已完成，发送任务完成关闭事件")
                         yield send_close_event(reason="completed", message="任务已完成")
                         # 等待一小段时间确保客户端接收到关闭事件
                         await asyncio.sleep(0.5)
@@ -280,7 +300,7 @@ async def progress_event_generator(task_id: str, client_id: str):
                     lambda redis: redis.exists(f"clients:{task_id}")
                 )
                 if not progress_exists or not clients_exists:
-                    logger.info(f"任务 {task_id} 的数据已被清理，结束事件生成器")
+                    logger.debug(f"任务 {task_id} 的数据已被清理，结束事件生成器")
                     yield send_close_event(reason="completed", message="任务数据已清理")
                     # 等待一小段时间确保客户端接收到关闭事件
                     await asyncio.sleep(0.5)
@@ -309,7 +329,7 @@ async def progress_event_generator(task_id: str, client_id: str):
                             
                             # 如果任务已完成，发送关闭事件并退出
                             if info.get('is_done', False):
-                                logger.info(f"任务 {task_id} 已完成，发送关闭事件")
+                                logger.debug(f"任务 {task_id} 已完成，发送关闭事件")
                                 yield send_close_event()
                                 # 等待一小段时间确保客户端接收到关闭事件
                                 await asyncio.sleep(0.5)
@@ -331,7 +351,7 @@ async def progress_event_generator(task_id: str, client_id: str):
                             yield send_heartbeat()
                             last_heartbeat = current_time
                         else:
-                            logger.info(f"客户端 {client_id} 已不存在，结束事件生成器")
+                            logger.debug(f"客户端 {client_id} 已不存在，结束事件生成器")
                             break
 
                 # 更新客户端最后活动时间
@@ -343,7 +363,7 @@ async def progress_event_generator(task_id: str, client_id: str):
                         lambda redis: redis.hset(f"clients:{task_id}", client_id, current_time)
                     )
                 else:
-                    logger.info(f"客户端 {client_id} 已不存在，结束事件生成器")
+                    logger.debug(f"客户端 {client_id} 已不存在，结束事件生成器")
                     break
             except Exception as redis_error:
                 logger.error(f"Redis操作失败: {str(redis_error)}")
@@ -367,14 +387,22 @@ async def progress_event_generator(task_id: str, client_id: str):
                 await execute_redis_operation(
                     lambda redis: redis.hdel(f"clients:{task_id}", client_id)
                 )
-                logger.info(f"客户端 {client_id} 从任务 {task_id} 断开连接")
+                logger.debug(f"客户端 {client_id} 从任务 {task_id} 断开连接")
         except Exception as cleanup_error:
             logger.error(f"清理客户端连接时出错: {str(cleanup_error)}")
 
-@router.get('/progress/{task_id}')
+@router.get('/progress/{task_id}', summary="通过SSE流式传输进度更新")
 async def get_progress(task_id: str, request: Request):
-    """获取任务进度的SSE流"""
-    logger.info(f"客户端连接到进度流: {task_id}, 请求头: {dict(request.headers)}")
+    """为客户端提供一个SSE端点以接收实时进度更新。
+
+    Args:
+        task_id (str): 要监控的任务ID。
+        request (Request): FastAPI请求对象。
+
+    Returns:
+        EventSourceResponse: 一个SSE流，持续推送进度更新。
+    """
+    logger.debug(f"客户端连接到进度流: {task_id}, 请求头: {dict(request.headers)}")
     
     # 生成客户端ID
     client_id = f"{request.client.host}-{request.headers.get('user-agent', 'unknown')}-{time.time()}"
@@ -389,24 +417,24 @@ async def get_progress(task_id: str, request: Request):
         }
     )
 
-@router.post('/progress/close/{task_id}')
+@router.post('/progress/close/{task_id}', summary="关闭进度并清理相关资源")
 async def close_progress_stream(task_id: str, close_reason: str = "TASK_COMPLETED"):
-    """关闭进度流连接
-    
-    接收来自Java客户端的关闭请求，标记任务为完成状态并清理相关资源
-    
+    """向指定的任务ID发送关闭信号，并从Redis中删除其记录。
+
+    接收来自客户端的关闭请求，标记任务为完成状态并清理相关资源。
+
     Args:
-        task_id (str): 任务唯一标识符
+        task_id (str): 要关闭的任务ID。
         close_reason (str): 关闭原因，可选值: TASK_COMPLETED, ERROR_OCCURRED, HEARTBEAT_TIMEOUT
-        
+
     Returns:
-        Dict: 包含操作结果的字典
+        SuccessResponse: 确认消息。
     """
     # 根据关闭原因决定日志级别
     if close_reason in ["ERROR_OCCURRED", "HEARTBEAT_TIMEOUT"]:
         logger.warning(f"收到关闭进度流请求: {task_id}, 原因: {close_reason}")
     else:
-        logger.info(f"收到关闭进度流请求: {task_id}, 原因: {close_reason}")
+        logger.debug(f"收到关闭进度流请求: {task_id}, 原因: {close_reason}")
     
     # 调用关闭连接函数，传递关闭原因
     await close_progress_connection(task_id, close_reason)
@@ -422,18 +450,18 @@ async def update_progress(
     total_frames: Optional[int] = None,
     is_done: bool = False
 ) -> None:
-    """更新任务进度。
-    
-    更新指定任务的进度信息并存储到Redis中。
-    
+    """在Redis中更新任务的进度。
+
+    此函数被其他模块调用，以更新特定任务的进度、状态和消息。
+
     Args:
-        task_id (str): 任务唯一标识符
-        progress (float): 进度百分比（0-100）
-        message (str): 进度描述信息
-        stage (str): 当前处理阶段
-        current_frame (Optional[int]): 当前处理的帧索引
-        total_frames (Optional[int]): 总帧数
-        is_done (bool): 任务是否完成
+        task_id (str): 要更新的任务ID。
+        progress (float): 新的完成百分比 (0-100)。
+        message (str): 描述当前进度的消息。
+        stage (str): 任务的当前处理阶段。
+        current_frame (Optional[int]): 当前处理的帧索引。
+        total_frames (Optional[int]): 总帧数。
+        is_done (bool): 任务是否已完成。
     """
     max_retries = 3
     retry_delay = 1.0
@@ -476,7 +504,7 @@ async def update_progress(
                 lambda redis: redis.expire(f"progress:{task_id}", 86400)
             )
             
-            logger.info(f"更新进度 {task_id} : {progress_info}")
+            logger.debug(f"更新进度 {task_id} : {progress_info}")
             
             # 如果任务完成，延迟清理进度数据
             if is_done:
@@ -489,7 +517,7 @@ async def update_progress(
                         await execute_redis_operation(
                             lambda redis: redis.delete(f"clients:{task_id}")
                         )
-                        logger.info(f"任务 {task_id} 的进度数据已清理")
+                        logger.debug(f"任务 {task_id} 的进度数据已清理")
                     except Exception as cleanup_e:
                         logger.error(f"清理进度数据时出错: {str(cleanup_e)}")
                 
@@ -515,7 +543,7 @@ async def update_progress(
             else:
                 raise
 
-async def send_event(task_id: str, event_type: str, data: Dict[str, Any]) -> None:
+async def send_event(task_id: str, event_type: str, data: Dict[str, Any], temp_paths: List[str] = None) -> None:
     """发送自定义事件到SSE流。
     
     向指定任务的SSE流发送自定义事件数据。
@@ -524,6 +552,7 @@ async def send_event(task_id: str, event_type: str, data: Dict[str, Any]) -> Non
         task_id (str): 任务唯一标识符
         event_type (str): 事件类型（如 'webp_result', 'webp_error'）
         data (Dict[str, Any]): 要发送的事件数据
+        temp_paths (List[str], optional): 需要清理的临时文件/文件夹路径列表
     """
     max_retries = 3
     retry_delay = 1.0
@@ -579,7 +608,17 @@ async def send_event(task_id: str, event_type: str, data: Dict[str, Any]) -> Non
             else:
                 raise
         
-        logger.info(f"发送事件 {event_type} 到任务 {task_id}: {data}")
+        logger.debug(f"发送事件 {event_type} 到任务 {task_id}: {data}")
+        
+        # 如果是错误事件且提供了临时文件路径，则清理这些文件
+        if event_type in ['webp_error', 'error'] and temp_paths:
+            logger.debug(f"开始清理任务 {task_id} 的临时文件: {temp_paths}")
+            for temp_path in temp_paths:
+                try:
+                    cleanup_temp_files(target_path=temp_path)
+                    logger.debug(f"已清理临时路径: {temp_path}")
+                except Exception as cleanup_error:
+                    logger.error(f"清理临时路径 {temp_path} 时出错: {str(cleanup_error)}")
 
 
 async def close_progress_connection(task_id: str, close_reason: str = "TASK_COMPLETED") -> None:
@@ -596,8 +635,14 @@ async def close_progress_connection(task_id: str, close_reason: str = "TASK_COMP
         # 根据关闭原因决定日志级别
         if close_reason in ["ERROR_OCCURRED", "HEARTBEAT_TIMEOUT"]:
             logger.warning(f"正在关闭任务 {task_id} 的进度连接，原因: {close_reason}")
+            # 在错误或超时情况下，立即清理临时文件，不考虑保留时间
+            try:
+                cleanup_temp_files(ignore_ttl=True)
+                logger.debug(f"已清理任务 {task_id} 的临时文件")
+            except Exception as cleanup_error:
+                logger.error(f"清理任务 {task_id} 临时文件时出错: {str(cleanup_error)}")
         else:
-            logger.info(f"正在关闭任务 {task_id} 的进度连接，原因: {close_reason}")
+            logger.debug(f"正在关闭任务 {task_id} 的进度连接，原因: {close_reason}")
         
         # 检查任务是否存在
         progress_exists = await execute_redis_operation(
@@ -618,7 +663,7 @@ async def close_progress_connection(task_id: str, close_reason: str = "TASK_COMP
                 await execute_redis_operation(
                     lambda redis: redis.rpush(f"progress:{task_id}", progress_json)
                 )
-                logger.info(f"任务 {task_id} 已标记为完成状态")
+                logger.debug(f"任务 {task_id} 已标记为完成状态")
             else:
                 # 如果没有进度信息，创建一个完成状态的进度信息
                 completion_progress = {
@@ -632,21 +677,21 @@ async def close_progress_connection(task_id: str, close_reason: str = "TASK_COMP
                 await execute_redis_operation(
                     lambda redis: redis.rpush(f"progress:{task_id}", progress_json)
                 )
-                logger.info(f"任务 {task_id} 创建了完成状态的进度信息")
+                logger.debug(f"任务 {task_id} 创建了完成状态的进度信息")
         
-        logger.info(f"任务 {task_id} 的进度连接已标记为关闭")
+        logger.debug(f"任务 {task_id} 的进度连接已标记为关闭")
         
         # 清理过期的进度数据（延迟清理，给客户端时间接收最后的消息）
         async def cleanup_later():
             
             # 清理资源
-            logger.info(f"开始清理任务 {task_id} 的资源")
+            logger.debug(f"开始清理任务 {task_id} 的资源")
             
             # 清理进度存储
             await execute_redis_operation(
                 lambda redis: redis.delete(f"progress:{task_id}")
             )
-            logger.info(f"已清理任务 {task_id} 的进度存储")
+            logger.debug(f"已清理任务 {task_id} 的进度存储")
             
             # 清理客户端连接
             client_count = await execute_redis_operation(
@@ -655,13 +700,13 @@ async def close_progress_connection(task_id: str, close_reason: str = "TASK_COMP
             await execute_redis_operation(
                 lambda redis: redis.delete(f"clients:{task_id}")
             )
-            logger.info(f"已清理任务 {task_id} 的 {client_count} 个客户端连接")
+            logger.debug(f"已清理任务 {task_id} 的 {client_count} 个客户端连接")
             
-            logger.info(f"任务 {task_id} 的所有资源已清理完毕")
+            logger.debug(f"任务 {task_id} 的所有资源已清理完毕")
         
         # 在后台任务中执行清理
         asyncio.create_task(cleanup_later())
-        logger.info(f"已启动任务 {task_id} 的资源清理任务")
+        logger.debug(f"已启动任务 {task_id} 的资源清理任务")
         
     except Exception as e:
         # 根据关闭原因决定错误日志级别
@@ -677,6 +722,6 @@ async def close_progress_connection(task_id: str, close_reason: str = "TASK_COMP
             await execute_redis_operation(
                 lambda redis: redis.delete(f"clients:{task_id}")
             )
-            logger.info(f"在错误处理中清理了任务 {task_id} 的资源")
+            logger.debug(f"在错误处理中清理了任务 {task_id} 的资源")
         except Exception as cleanup_error:
             logger.error(f"清理任务 {task_id} 资源时出错: {str(cleanup_error)}")
