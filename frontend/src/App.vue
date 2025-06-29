@@ -62,7 +62,7 @@
           <el-form-item>  
             <el-button 
               type="primary" 
-              @click="processImage" 
+              @click="processImageOriginal" 
               :disabled="!imageFile || isProcessing"
               style="width: 100%"
             >绘制按钮</el-button>
@@ -154,71 +154,94 @@
 
 <script setup>
 /**
- * 字符画转换器主组件
- * 提供图片上传、字符画转换、结果导出和实时进度监控功能
- * 支持多种图片格式和转换参数配置
+ * @file App.vue
+ * @description 字符画转换器主组件，提供图片上传、参数配置、字符画转换、结果预览与导出，以及实时进度监控功能。
+ * @vue-component
  */
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElLoading, ElUpload } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
-import { convertImage, getCharText, checkHealth, getTempImage } from './api/convert'
-import { subscribeToProgress } from './api/progress'
+import { convertImage, getCharText, checkHealth } from './api/convert'
+import { subscribeToProgress, getTempImageFromPath } from './api/progress'
 import { debugLog } from './utils/debug.js'
 
 /**
- * 响应式状态变量
+ * @section 响应式状态变量
+ * @description 定义了组件中所有需要响应式跟踪的状态。
  */
-// 文件和图像相关状态
-const imageFile = ref(null)  // 用户上传的原始图片文件
-const imageUrl = ref('')    // 原始图片的预览URL
-const imageUrlList = ref([])    // 原始图片URL列表，用于Element Plus图片预览
-const charImageUrl = ref('') // 生成的字符画图片URL
-const charImageUrlList = ref([])    // 字符画图片URL列表，用于Element Plus图片预览
-const charText = ref('')    // 生成的字符画文本内容
+/** @type {Ref<File | null>} 用户上传的原始图片文件 */
+const imageFile = ref(null)
+/** @type {Ref<string>} 原始图片的预览URL */
+const imageUrl = ref('')
+/** @type {Ref<string[]>} 原始图片URL列表，用于Element Plus图片预览 */
+const imageUrlList = ref([])
+/** @type {Ref<string>} 生成的字符画图片URL */
+const charImageUrl = ref('')
+/** @type {Ref<string[]>} 字符画图片URL列表，用于Element Plus图片预览 */
+const charImageUrlList = ref([])
+/** @type {Ref<string>} 生成的字符画文本内容 */
+const charText = ref('')
 
-// 转换参数配置
-const colorMode = ref('color') // 颜色模式：'color'(彩色) 或 'grayscale'(灰度)
-const charDensity = ref('medium') // 字符密度：'low'(低)、'medium'(中)、'high'(高)
-const limitSize = ref(true)  // 是否限制输出图片尺寸以提高性能
+/** @type {Ref<'color' | 'colorBackground' | 'grayscale'>} 颜色模式 */
+const colorMode = ref('color')
+/** @type {Ref<'low' | 'medium' | 'high'>} 字符密度 */
+const charDensity = ref('medium')
+/** @type {Ref<boolean>} 是否限制输出图片尺寸以提高性能 */
+const limitSize = ref(true)
 
-// 处理状态控制
-const isProcessing = ref(false) // 是否正在进行图片转换处理
-const processPercentage = ref(0) // 当前处理进度百分比(0-100)
-const usageDialogVisible = ref(false) // 使用说明对话框的显示状态
+/** @type {Ref<boolean>} 是否正在进行图片转换处理 */
+const isProcessing = ref(false)
+/** @type {Ref<number>} 当前处理进度百分比(0-100) */
+const processPercentage = ref(0)
+/** @type {Ref<boolean>} 使用说明对话框的显示状态 */
+const usageDialogVisible = ref(false)
 
 /**
- * DOM元素引用
+ * @section DOM元素引用
+ * @description 用于直接操作DOM的引用。
  */
-const originalImageContainer = ref(null) // 原始图片显示容器的DOM引用
-const charImageContainer = ref(null) // 字符画图片显示容器的DOM引用
+/** @type {Ref<HTMLElement | null>} 原始图片显示容器的DOM引用 */
+const originalImageContainer = ref(null)
+/** @type {Ref<HTMLElement | null>} 字符画图片显示容器的DOM引用 */
+const charImageContainer = ref(null)
 
 /**
- * 进度监控相关状态
+ * @section 进度监控相关状态
+ * @description 跟踪字符画转换过程中的详细进度。
  */
+/** @type {{stage: Ref<string>, message: Ref<string>}} 当前处理阶段的详细信息 */
 const progressStage = {
   stage: ref(''),
-  message: ref('')
-} // 当前处理阶段的详细信息
-const currentPixel = ref(0)  // 已处理的像素数量
-const totalPixels = ref(0)   // 图片总像素数量
+  message: ref(''),
+}
+/** @type {Ref<number>} 已处理的像素数量 */
+const currentPixel = ref(0)
+/** @type {Ref<number>} 图片总像素数量 */
+const totalPixels = ref(0)
 
 /**
- * 状态标志
+ * @section 状态标志
+ * @description 用于控制UI行为的布尔标志。
  */
-const isLargeImage = ref(false) // 标识生成的字符画是否为大文件(>300MB)，影响显示方式
-const hasCharText = ref(false)  // 标识是否成功获取到字符画文本，控制文本导出按钮状态
+/** @type {Ref<boolean>} 标识生成的字符画是否为大文件(>300MB)，影响显示方式 */
+const isLargeImage = ref(false)
+/** @type {Ref<boolean>} 标识是否成功获取到字符画文本，控制文本导出按钮状态 */
+const hasCharText = ref(false)
 
 /**
- * 服务器发送事件(SSE)连接实例
- * @type {EventSource|null}
+ * @section SSE连接管理
+ * @description 管理与后端的Server-Sent Events连接，用于实时进度更新。
  */
+/** @type {EventSource | null} SSE连接实例 */
 let eventSource = null
-let shouldCloseConnection = false // 控制是否应该关闭SSE连接的标志
-let progressCloseTimer = null // 进度条延时关闭定时器
+/** @type {boolean} 控制是否应该关闭SSE连接的标志 */
+let shouldCloseConnection = false
+/** @type {number | null} 进度条延时关闭定时器ID */
+let progressCloseTimer = null
 
 /**
- * 延时关闭进度条
- * 在转换完成或出错后，延时3秒关闭进度条显示
+ * 延时关闭进度条。
+ * @description 在转换完成或出错后，延时3秒关闭进度条显示，以提供更好的用户反馈。
  */
 const closeProgressWithDelay = () => {
   // 清除之前的定时器
@@ -237,7 +260,8 @@ const closeProgressWithDelay = () => {
 }
 
 /**
- * 重置连接关闭标志和清除进度条定时器
+ * 重置处理状态。
+ * @description 在开始新的转换任务前，重置与上一次任务相关的状态，如SSE连接关闭标志和定时器。
  */
 const resetProcessingState = () => {
   // 重置连接关闭标志
@@ -253,8 +277,8 @@ const resetProcessingState = () => {
 
 
 /**
- * 计算属性：获取文件上传大小限制
- * @returns {number} 文件上传大小限制，单位为MB
+ * 计算属性，获取文件上传大小限制。
+ * @returns {number} 文件上传大小限制，单位为MB。
  */
 const maxUploadSize = computed(() => {
   // 从环境变量获取上传大小限制，默认为10MB
@@ -262,10 +286,10 @@ const maxUploadSize = computed(() => {
 })
 
 /**
- * 文件上传前的验证检查
- * 验证文件类型和大小是否符合系统要求
- * @param {File} file - 待验证的文件对象
- * @returns {boolean} 验证通过返回true，验证失败返回false
+ * 文件上传前的验证检查。
+ * @description 验证文件的类型和大小是否符合系统要求。
+ * @param {File} file - 待验证的文件对象。
+ * @returns {boolean} 如果文件有效则返回 `true`，否则返回 `false`。
  */
 const beforeUpload = (file) => {
   debugLog(file)
@@ -288,10 +312,10 @@ const beforeUpload = (file) => {
 }
 
 /**
- * 处理文件选择变化事件
- * 当用户通过上传组件选择新文件时触发，更新相关状态
- * @param {Object} file - Element Plus Upload组件的文件对象
- * @param {File} file.raw - 原始文件对象
+ * 处理文件选择变化事件。
+ * @description 当用户通过上传组件选择新文件时触发，更新相关状态并重置旧的预览信息。
+ * @param {object} file - Element Plus Upload组件的文件对象。
+ * @param {File} file.raw - 原始文件对象。
  */
 const handleFileChange = (file) => {
   if (!file || !file.raw) return
@@ -324,21 +348,10 @@ const handleFileChange = (file) => {
   }
 }
 
-/**
- * 启动图片转换处理
- * 调用核心转换方法将图片转换为字符画
- * @async
- * @returns {Promise<void>}
- */
-const processImage = async () => {
-  await processImageOriginal();
-}
-
-
 
 /**
- * 图片转换核心处理方法
- * 执行完整的图片转字符画流程：文件上传、进度监控、结果获取
+ * 图片转换核心处理方法。
+ * @description 执行完整的图片转字符画流程：构建表单数据、订阅SSE进度、发送转换请求，并处理各种回调。
  * @async
  * @returns {Promise<void>}
  */
@@ -527,7 +540,7 @@ const handleConvertResult = async (filePath, contentType) => {
     let textLoadSuccess = false
     
     try {
-      const imageResponse = await getTempImage(filePath, contentType)
+      const imageResponse = await getTempImageFromPath(filePath, contentType)
       
       // 创建一个Blob对象
       const blob = new Blob([imageResponse.data], { type: contentType })
@@ -852,11 +865,9 @@ onMounted(() => {
 }
 
 .progress-container {
-  margin: 20px 0;
   padding: 0 20px;
   max-width: 800px;
-  margin-left: auto;
-  margin-right: auto;
+  margin: 20px auto;
 }
 
 .progress-info {

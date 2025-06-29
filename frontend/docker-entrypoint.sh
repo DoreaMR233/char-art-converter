@@ -42,17 +42,17 @@ if [ -f "$ENV_PROD_FILE" ]; then
   rm /tmp/env_prod_vars
 fi
 
-# 优先使用VITE_BASE_PATH，如果未设置则使用BASE_PATH环境变量
-BASE_PATH_VALUE=${VITE_BASE_PATH:-${BASE_PATH:-""}}
+# 优先使用VITE_BASE_PATH，如果未设置则使用默认值空
+BASE_PATH_VALUE=${VITE_BASE_PATH:""}
 
-# 优先使用VITE_API_URL，如果未设置则使用API_URL环境变量
-API_URL_VALUE=${VITE_API_URL:-${API_URL:-"http://localhost:8080"}}
+# 优先使用VITE_API_URL，如果未设置则使用使用默认值http://localhost:8080
+API_URL_VALUE=${VITE_API_URL:-"http://localhost:8080"}
 
 # 优先使用VITE_API_BASE_PATH，如果未设置则使用默认值/api
 API_BASE_PATH_VALUE=${VITE_API_BASE_PATH:-"/api"}
 
-# 优先使用VITE_MAX_UPLOAD_SIZE，如果未设置则使用MAX_UPLOAD_SIZE环境变量，默认为10
-MAX_UPLOAD_SIZE_VALUE=${VITE_MAX_UPLOAD_SIZE:-${MAX_UPLOAD_SIZE:-10}}
+# 优先使用VITE_MAX_UPLOAD_SIZE，如果未设置则使用默认值10
+MAX_UPLOAD_SIZE_VALUE=${VITE_MAX_UPLOAD_SIZE:-10}
 
 # 检查是否设置了BASE_PATH环境变量
 #if [ -n "$BASE_PATH_VALUE" ]; then

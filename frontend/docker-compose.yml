@@ -5,12 +5,10 @@ services:
       dockerfile: Dockerfile
       args:
         # 此处变量会覆盖.env和.env.production中的变量，为空时使用.env和.env.production中的变量
-        # 资源路径前缀，可选，不填写则默认为空，填写时不要带上前后斜杠
+        # 资源路径前缀，可选，不填写则使用.env.production中的变量，填写时不要带上前后斜杠
         - VITE_BASE_PATH=
-        # 后端主机，可选，不填写则默认为http://localhost，填写时带上http://
-        - BACKEND_HOST=http://localhost
-        # 后端端口，可选，不填写则默认为8080
-        - BACKEND_PORT=8080
+        # 后端地址，可选，不填写则使用.env.production中的变量，填写时带上http://
+        - VITE_API_URL=http://localhost:8080
     container_name: char-art-frontend
     ports:
       - "8080:80"
@@ -21,10 +19,6 @@ services:
       # - VITE_API_URL=http://char-art-backend:8080
       # - VITE_API_BASE_PATH=/api
       # - VITE_MAX_UPLOAD_SIZE=10
-      # 兼容旧版本的环境变量
-      # - BASE_PATH=char-art
-      # - API_URL=http://char-art-backend:8080
-      # - MAX_UPLOAD_SIZE=10
     restart: unless-stopped
     networks:
       - char-art-network

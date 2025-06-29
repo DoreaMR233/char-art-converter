@@ -17,14 +17,49 @@ RUN npm install
 COPY . .
 
 
-# 如果提供了VITE_BASE_PATH环境变量，则更新.env.production文件
+# 如果提供了构建参数，则更新.env.production文件中的相关变量
+# 声明所有可能的构建参数
+# .env.example 中的变量
+ARG VITE_APP_TITLE
+ARG VITE_APP_VERSION
+ARG VITE_API_BASE_PATH
+ARG VITE_MAX_UPLOAD_SIZE
+# .env.production.example 中的变量
+ARG VITE_API_URL
 ARG VITE_BASE_PATH
-ARG BACKEND_HOST="http://localhost"
-ARG BACKEND_PORT=8080
-ARG API_URL="${BACKEND_HOST}:${BACKEND_PORT}"
+ARG VITE_DEBUG
+ARG VITE_SOURCEMAP
+
+# 如果提供了构建参数，则更新相应的环境变量文件
 RUN if [ -f .env.production ]; then \
-    sed -i "/^VITE_BASE_PATH=/c\VITE_BASE_PATH=$VITE_BASE_PATH" .env.production; \
-    sed -i "/^VITE_API_URL=/c\VITE_API_URL=$API_URL" .env.production; \
+    if [ -n "$VITE_API_URL" ]; then \
+        sed -i "/^VITE_API_URL=/c\VITE_API_URL=$VITE_API_URL" .env.production; \
+    fi; \
+    if [ -n "$VITE_BASE_PATH" ]; then \
+        sed -i "/^VITE_BASE_PATH=/c\VITE_BASE_PATH=$VITE_BASE_PATH" .env.production; \
+    fi; \
+    if [ -n "$VITE_DEBUG" ]; then \
+        sed -i "/^VITE_DEBUG=/c\VITE_DEBUG=$VITE_DEBUG" .env.production; \
+    fi; \
+    if [ -n "$VITE_SOURCEMAP" ]; then \
+        sed -i "/^VITE_SOURCEMAP=/c\VITE_SOURCEMAP=$VITE_SOURCEMAP" .env.production; \
+    fi; \
+    fi
+
+# 处理 .env 文件中的通用变量（如果存在）
+RUN if [ -f .env ]; then \
+    if [ -n "$VITE_APP_TITLE" ]; then \
+        sed -i "/^VITE_APP_TITLE=/c\VITE_APP_TITLE=$VITE_APP_TITLE" .env; \
+    fi; \
+    if [ -n "$VITE_APP_VERSION" ]; then \
+        sed -i "/^VITE_APP_VERSION=/c\VITE_APP_VERSION=$VITE_APP_VERSION" .env; \
+    fi; \
+    if [ -n "$VITE_API_BASE_PATH" ]; then \
+        sed -i "/^VITE_API_BASE_PATH=/c\VITE_API_BASE_PATH=$VITE_API_BASE_PATH" .env; \
+    fi; \
+    if [ -n "$VITE_MAX_UPLOAD_SIZE" ]; then \
+        sed -i "/^VITE_MAX_UPLOAD_SIZE=/c\VITE_MAX_UPLOAD_SIZE=$VITE_MAX_UPLOAD_SIZE" .env; \
+    fi; \
     fi
 
 # 构建生产版本

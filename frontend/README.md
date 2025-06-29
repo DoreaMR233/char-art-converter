@@ -15,14 +15,14 @@
       - [注意事项](#注意事项)
     - [Docker部署说明](#docker部署说明)
     - [配置文件说明](#配置文件说明)
-      - [环境变量文件](#环境变量文件)
-      - [主要配置项](#主要配置项)
-        - [通用环境变量](#通用环境变量)
-        - [开发环境变量](#开发环境变量)
-        - [生产环境变量](#生产环境变量)
+      - [首次使用步骤](#首次使用步骤)
+      - [重要说明](#重要说明)
+      - [配置参数说明](#配置参数说明)
+        - [通用配置参数（.env.example）](#通用配置参数envexample)
+        - [开发环境配置参数（.env.development.example）](#开发环境配置参数envdevelopmentexample)
+        - [生产环境配置参数（.env.production.example）](#生产环境配置参数envproductionexample)
       - [Vite配置文件](#vite配置文件)
       - [API代理配置](#api代理配置)
-      - [功能特性配置](#功能特性配置)
   - [许可证](#许可证)
 
 ## 项目结构
@@ -144,63 +144,59 @@ Docker部署提供了更简便的部署方式，包含了Nginx Web服务器配�
 
 ### 配置文件说明
 
-前端应用使用Vite的环境变量系统进行配置，支持以下配置文件：
+本项目使用 `.env.example`、`.env.development.example` 和 `.env.production.example` 作为配置模板文件。
 
-#### 环境变量文件
+#### 首次使用步骤
 
-- `.env` - 所有环境都会加载的默认环境变量
-- `.env.development` - 开发环境特定的环境变量
-- `.env.production` - 生产环境特定的环境变量
+1. 复制模板文件：
+   ```bash
+   cp .env.example .env
+   cp .env.development.example .env.development
+   cp .env.production.example .env.production
+   ```
 
-#### 主要配置项
+2. 根据你的环境修改相应的 `.env` 文件中的配置项
 
-##### 通用环境变量
+#### 重要说明
 
-```properties
-# 应用名称
-VITE_APP_TITLE=字符画转换器
+- `.env`、`.env.development` 和 `.env.production` 文件已被添加到 `.gitignore` 中，不会被提交到版本控制
+- 请不要直接修改模板文件，除非需要更新默认配置
+- 如果需要添加新的配置项，请同时更新相应的模板文件
 
-# 应用版本
-VITE_APP_VERSION=1.0.0
+#### 配置参数说明
 
-# API基础路径
-VITE_API_BASE_PATH=/api
+##### 通用配置参数（.env.example）
 
-# 上传文件最大大小（单位：MB）
-VITE_MAX_UPLOAD_SIZE=10
-```
+这些变量在所有环境中都可用，但可以被特定环境的配置覆盖：
 
-##### 开发环境变量
+| 变量名称 | 变量中文名 | 变量作用 | 变量默认值 |
+|---------|-----------|----------|----------|
+| VITE_APP_TITLE | 应用名称 | 显示在浏览器标题栏的应用名称 | 字符画转换器 |
+| VITE_APP_VERSION | 应用版本 | 当前应用的版本号 | 1.0.0 |
+| VITE_API_BASE_PATH | API基础路径 | API请求的基础路径前缀 | /api |
+| VITE_MAX_UPLOAD_SIZE | 最大上传文件大小 | 允许上传的文件最大大小（MB） | 10 |
 
-```properties
-# API服务器地址
-VITE_API_URL=http://localhost:8080
+##### 开发环境配置参数（.env.development.example）
 
-# 资源路径前缀
-VITE_BASE_PATH=
+开发环境特有的配置参数：
 
-# 开发服务器端口
-VITE_PORT=5174
+| 变量名称 | 变量中文名 | 变量作用 | 变量默认值 |
+|---------|-----------|----------|----------|
+| VITE_API_URL | API服务器地址 | 指定后端API服务的完整URL地址 | http://localhost:8080 |
+| VITE_BASE_PATH | 资源路径前缀 | 设置应用部署的子路径，开发环境通常为空 | 空字符串 |
+| VITE_PORT | 开发服务器端口 | 开发服务器监听的端口号 | 5174 |
+| VITE_DEBUG | 调试模式开关 | 是否启用调试模式，影响日志输出和错误显示 | true |
 
-# 是否启用调试模式
-VITE_DEBUG=true
-```
+##### 生产环境配置参数（.env.production.example）
 
-##### 生产环境变量
+生产环境特有的配置参数：
 
-```properties
-# API服务器地址
-VITE_API_URL=http://localhost:8080
-
-# 资源路径前缀
-VITE_BASE_PATH=char-art
-
-# 是否启用调试模式
-VITE_DEBUG=false
-
-# 是否启用源码映射
-VITE_SOURCEMAP=false
-```
+| 变量名称 | 变量中文名 | 变量作用 | 变量默认值 |
+|---------|-----------|----------|----------|
+| VITE_API_URL | API服务器地址 | 指定后端API服务的完整URL地址 | http://backend:8080 |
+| VITE_BASE_PATH | 资源路径前缀 | 设置应用部署的子路径 | charart |
+| VITE_DEBUG | 调试模式开关 | 是否启用调试模式，影响日志输出和错误显示 | false |
+| VITE_SOURCEMAP | 源码映射开关 | 是否生成源码映射文件，用于调试 | false |
 
 #### Vite配置文件
 
@@ -226,12 +222,6 @@ proxy: {
 }
 ```
 
-#### 功能特性配置
-
-- **文件上传**：支持JPG、PNG、JPEG、GIF、WEBP、BMP格式
-- **实时进度**：使用SSE技术监控转换进度
-- **响应式设计**：适配不同屏幕尺寸
-- **导出功能**：支持导出为文本文件和图片文件
 
 ## 许可证
 

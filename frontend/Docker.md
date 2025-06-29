@@ -18,11 +18,9 @@
     - [运行容器](#运行容器)
     - [验证Docker Run服务状态](#验证docker-run服务状态)
   - [配置参数](#配置参数)
-    - [配置文件变量](#配置文件变量)
-      - [开发环境变量](#开发环境变量)
-      - [生产环境变量](#生产环境变量)
-      - [通用环境变量](#通用环境变量)
-      - [使用示例](#使用示例)
+    - [配置变量列表](#配置变量列表)
+    - [使用示例](#使用示例)
+      - [Docker 构建时环境变量配置](#docker-构建时环境变量配置)
     - [卷](#卷)
       - [卷使用示例](#卷使用示例)
     - [网络](#网络)
@@ -168,52 +166,51 @@ curl http://localhost:8080
 
 ## 配置参数
 
-### 配置文件变量
+### 配置变量列表
 
-#### 开发环境变量
+以下是可通过环境变量配置的参数列表：
 
-开发环境变量定义在 `.env.development` 文件中：
+| 环境变量名称                 | 环境变量中文名    | 环境变量作用                   | 环境变量默认值                 | 环境变量对应配置文件参数           |
+|------------------------|------------|--------------------------|-------------------------|-------------------------|
+| `VITE_APP_TITLE`       | 应用名称       | 显示在浏览器标题栏的应用名称           | `字符画转换器`                | `.env` 文件中的 `VITE_APP_TITLE` |
+| `VITE_APP_VERSION`     | 应用版本       | 当前应用的版本号                 | `1.0.0`                 | `.env` 文件中的 `VITE_APP_VERSION` |
+| `VITE_API_BASE_PATH`   | API基础路径    | API请求的基础路径前缀             | `/api`                  | `.env` 文件中的 `VITE_API_BASE_PATH` |
+| `VITE_MAX_UPLOAD_SIZE` | 最大上传文件大小   | 允许上传的文件最大大小（MB）          | `10`                    | `.env` 文件中的 `VITE_MAX_UPLOAD_SIZE` |
+| `VITE_API_URL`         | API服务器地址   | 指定后端API服务的完整URL地址        | `http://backend:8080`   | `.env.production` 文件中的 `VITE_API_URL` |
+| `VITE_BASE_PATH`       | 资源路径前缀     | 设置应用部署的子路径，用于生产环境部署      | `charart`               | `.env.production` 文件中的 `VITE_BASE_PATH` |
+| `VITE_DEBUG`           | 调试模式开关     | 是否启用调试模式，影响日志输出和错误显示     | `false`                 | `.env.production` 文件中的 `VITE_DEBUG` |
+| `VITE_SOURCEMAP`       | 源码映射开关     | 是否生成源码映射文件，用于生产环境调试      | `false`                 | `.env.production` 文件中的 `VITE_SOURCEMAP` |
 
-| 变量名称             | 变量中文名    | 变量作用                 | 变量默认值                   |
-|------------------|----------|----------------------|-------------------------|
-| `VITE_API_URL`   | API服务器地址 | 指定后端API服务的完整URL地址    | `http://localhost:8080` |
-| `VITE_BASE_PATH` | 资源路径前缀   | 设置应用部署的子路径，开发环境通常为空  | 空字符串                    |
-| `VITE_PORT`      | 开发服务器端口  | 开发服务器监听的端口号          | `5174`                  |
-| `VITE_DEBUG`     | 调试模式开关   | 是否启用调试模式，影响日志输出和错误显示 | `true`                  |
+### 使用示例
 
-#### 生产环境变量
+**Docker Compose 配置示例：**
 
-生产环境变量定义在 `.env.production` 文件中：
+```yaml
+services:
+  char-art-frontend:
+    build:
+      context: .
+      args:
+        - VITE_APP_TITLE=定制字符画转换器
+        - VITE_API_URL=http://char-art-backend:8080
+        - VITE_BASE_PATH=charart
+        - VITE_DEBUG=false
+        - VITE_MAX_UPLOAD_SIZE=50
+        - VITE_SOURCEMAP=false
+```
 
-| 变量名称             | 变量中文名    | 变量作用            | 变量默认值                 |
-|------------------|----------|-----------------|-----------------------|
-| `VITE_API_URL`   | API服务器地址 | 生产环境中的后端API服务地址 | `http://backend:8080` |
-| `VITE_BASE_PATH` | 资源路径前缀   | 生产环境中应用部署的子路径   | `charart`             |
-| `VITE_DEBUG`     | 调试模式开关   | 生产环境中是否启用调试模式   | `false`               |
-| `VITE_SOURCEMAP` | 源码映射开关   | 是否生成源码映射文件，用于调试 | `false`               |
-
-#### 通用环境变量
-
-通用环境变量定义在 `.env` 文件中，适用于所有环境：
-
-| 变量名称                   | 变量中文名    | 变量作用            | 变量默认值    |
-|------------------------|----------|-----------------|----------|
-| `VITE_APP_TITLE`       | 应用名称     | 显示在浏览器标题栏的应用名称  | `字符画转换器` |
-| `VITE_APP_VERSION`     | 应用版本     | 当前应用的版本号        | `1.0.0`  |
-| `VITE_API_BASE_PATH`   | API基础路径  | API请求的基础路径前缀    | `/api`   |
-| `VITE_MAX_UPLOAD_SIZE` | 最大上传文件大小 | 允许上传的文件最大大小（MB） | `10`     |
-
-#### 使用示例
+**Docker Run 配置示例：**
 
 ```bash
-# 使用自定义配置运行容器
-docker run -d --name char-art-frontend \
-  -p 8080:80 \
-  -e VITE_BASE_PATH=myapp \
-  -e VITE_API_URL=http://api.example.com:8080 \
-  -e VITE_MAX_UPLOAD_SIZE=20 \
-  -e VITE_DEBUG=false \
-  char-art-frontend:latest
+# 构建时指定环境变量
+docker build \
+  --build-arg VITE_APP_TITLE="定制字符画转换器" \
+  --build-arg VITE_API_URL=http://production-api:8080 \
+  --build-arg VITE_BASE_PATH=charart \
+  --build-arg VITE_DEBUG=false \
+  --build-arg VITE_MAX_UPLOAD_SIZE=50 \
+  --build-arg VITE_SOURCEMAP=false \
+  -t char-art-frontend:custom .
 ```
 
 ### 卷
@@ -228,22 +225,42 @@ docker run -d --name char-art-frontend \
 
 #### 卷使用示例
 
-```bash
-# 创建命名卷
-docker volume create char-art-frontend-logs
-docker volume create char-art-frontend-config
+**Docker Compose 卷配置：**
 
-# 使用命名卷运行容器
+```yaml
+services:
+  char-art-frontend:
+    volumes:
+      - char-art-frontend-logs:/var/log/nginx
+      - char-art-frontend-html:/usr/share/nginx/html
+      - char-art-frontend-config:/etc/nginx
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro  # 只读配置文件
+
+volumes:
+  char-art-frontend-logs:
+    driver: local
+  char-art-frontend-html:
+    driver: local
+  char-art-frontend-config:
+    driver: local
+```
+
+**Docker Run 卷配置：**
+
+```bash
+# 使用命名卷
 docker run -d --name char-art-frontend \
   -p 8080:80 \
   -v char-art-frontend-logs:/var/log/nginx \
+  -v char-art-frontend-html:/usr/share/nginx/html \
   -v char-art-frontend-config:/etc/nginx \
   char-art-frontend:latest
 
-# 使用主机目录挂载
+# 使用绑定挂载
 docker run -d --name char-art-frontend \
   -p 8080:80 \
   -v /host/path/logs:/var/log/nginx \
+  -v /host/path/html:/usr/share/nginx/html \
   -v /host/path/config:/etc/nginx \
   char-art-frontend:latest
 ```
@@ -260,19 +277,39 @@ docker run -d --name char-art-frontend \
 
 #### 网络使用示例
 
+**Docker Compose 网络配置：**
+
+```yaml
+services:
+  char-art-frontend:
+    networks:
+      - char-art-network
+      - external-network
+
+networks:
+  char-art-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  external-network:
+    external: true
+```
+
+**Docker Run 网络配置：**
+
 ```bash
 # 创建自定义网络
-docker network create char-art-network
+docker network create --driver bridge \
+  --subnet=172.20.0.0/16 \
+  char-art-network
 
 # 在自定义网络中运行前端服务
 docker run -d --name char-art-frontend \
   --network char-art-network \
+  --ip 172.20.0.20 \
   -p 8080:80 \
-  -e VITE_API_URL=http://char-art-backend:8080 \
   char-art-frontend:latest
-
-# 查看网络信息
-docker network inspect char-art-network
 ```
 
 ## 与其他服务集成

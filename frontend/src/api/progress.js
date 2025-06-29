@@ -1,13 +1,14 @@
 /**
- * @file progress.js
- * @description 进度管理API模块，处理实时进度订阅和连接管理
+ * @file 进度管理API模块，处理实时进度订阅和连接管理。
  * @module api/progress
  */
-import api from './convert.js'
+import api, { getTempImage } from './convert.js'
 import { debugLog } from '../utils/debug.js'
 
 /**
- * @description 环境变量配置
+ * @property {string} basePath - 基础路径，从环境变量 `VITE_BASE_PATH` 获取，默认为空字符串。
+ * @property {string} apiBasePath - API基础路径，从环境变量 `VITE_API_BASE_PATH` 获取，默认为'/api'。
+ * @property {string} apiFullBasePath - 完整的API基础路径，由 `basePath` 和 `apiBasePath` 拼接而成。
  */
 // 基础路径，从环境变量获取，默认为空字符串
 const basePath = import.meta.env.VITE_BASE_PATH || '';
@@ -17,11 +18,17 @@ const apiBasePath = import.meta.env.VITE_API_BASE_PATH || '/api';
 const apiFullBasePath = basePath === '' ? apiBasePath : `/${basePath}${apiBasePath}`;
 
 /**
+ * 订阅图片转换进度。
+ *
  * @function subscribeToProgress
- * @description 订阅转换进度接口，通过Server-Sent Events(SSE)实时获取图片转换进度
- * @param {string} id - 用于进度跟踪的唯一标识符
- * @param {Function} onMessage - 消息回调函数
- * @returns {EventSource} 事件源对象，可用于取消订阅
+ * @description 通过Server-Sent Events (SSE) 实时获取图片转换进度。
+ * @param {string} id - 用于标识特定转换任务的唯一ID。
+ * @param {function} onMessage - 包含不同事件类型回调函数的对象。
+ * @param {(data: any) => void} onMessage.onProgress - 接收进度更新的回调函数。
+ * @param {(data: any) => void} onMessage.onComplete - 转换完成时的回调函数。
+ * @param {(error: any) => void} onMessage.onError - 发生错误时的回调函数。
+ * @param {() => void} onMessage.onOpen - SSE连接成功建立时的回调函数。
+ * @param {() => void} onMessage.onClose - SSE连接关闭时的回调函数。
  */
 export const subscribeToProgress = (id, onMessage) => {
   let eventSource = new EventSource(`${apiFullBasePath}/progress/${id}`)
@@ -37,11 +44,9 @@ export const subscribeToProgress = (id, onMessage) => {
     debugLog('EventSource readyState:', eventSource.readyState)
   }
 
-  /**
-   * @event heartbeat
-   * @description 处理心跳消息 - 保持连接活跃
-   * @param {Event} event - 事件对象
-   */
+      /**
+     * 处理心跳消息，用于维持连接活跃。
+     */
   eventSource.addEventListener("heartbeat",(event) => {
     debugLog('收到心跳消息',event.data)
     
@@ -80,20 +85,16 @@ export const subscribeToProgress = (id, onMessage) => {
     }
   })
 
-  /**
-   * @event init
-   * @description 处理初始化消息 - 确认连接建立
-   * @param {Event} event - 事件对象，包含初始化数据
-   */
+      /**
+     * 处理初始化消息，确认SSE连接已建立。
+     */
   eventSource.addEventListener("init",(event) => {
     debugLog('已接收到后端消息：',event.data)
   })
   
-  /**
-   * @event close
-   * @description 处理关闭消息 - 接收服务器发送的关闭连接指令
-   * @param {Event} event - 事件对象，包含关闭消息
-   */
+      /**
+     * 处理关闭消息，由服务器主动发起，通知客户端关闭连接。
+     */
   eventSource.addEventListener("close",(event) => {
     debugLog('收到服务器关闭连接消息:', event.data)
     
@@ -389,4 +390,25 @@ export const closeProgress = (id, closeReason = null) => {
       'Accept': 'application/json'  // 明确指定Accept头
     }
   })
+}
+
+/**
+ * @function getTempImageFromPath
+ * @description 从路径信息中拆分临时文件夹名称和文件名，然后调用getTempImage获取图片
+ * @param {string} filePath - 格式为"临时文件夹名/结果文件名"的路径信息
+ * @param {string} contentType - 图片的内容类型
+ * @returns {Promise<Object>} 包含图片Blob数据的响应对象
+ */
+export const getTempImageFromPath = (filePath, contentType) => {
+  // 拆分路径信息
+  const pathParts = filePath.split('/')
+  
+  if (pathParts.length !== 2) {
+    throw new Error(`无效的文件路径格式: ${filePath}，期望格式为"临时文件夹名/文件名"`)
+  }
+  
+  const [tempDirName, fileName] = pathParts
+  
+  // 调用convert.js中的getTempImage函数
+  return getTempImage(tempDirName, fileName, contentType)
 }
