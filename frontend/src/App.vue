@@ -89,6 +89,19 @@
         :status="processPercentage >= 100 ? 'success' : ''"
         class="light-progress"
       />
+      
+      <!-- 下载进度条 -->
+      <div v-if="isDownloading" class="download-progress-container">
+        <el-progress 
+          :percentage="downloadProgress" 
+          :stroke-width="15" 
+          :show-text="true"
+          status=""
+          class="download-progress"
+        />
+        <p class="download-info">下载图片进度: {{ downloadProgress }}%</p>
+      </div>
+      
       <div class="progress-info">
         <p class="progress-stage" v-if="progressStage.stage">当前阶段: {{ progressStage.stage.value }}</p>
         <p class="progress-stage" v-if="progressStage.message">当前信息: {{ progressStage.message.value }}</p>
@@ -218,6 +231,10 @@ const progressStage = {
 const currentPixel = ref(0)
 /** @type {Ref<number>} 图片总像素数量 */
 const totalPixels = ref(0)
+/** @type {Ref<number>} 图片下载进度百分比(0-100) */
+const downloadProgress = ref(0)
+/** @type {Ref<boolean>} 是否正在下载图片 */
+const isDownloading = ref(false)
 
 /**
  * @section 状态标志
@@ -528,18 +545,37 @@ const handleConvertResult = async (filePath, contentType) => {
     // 获取图片数据
     debugLog('获取图片数据...')
     
+    // 重置下载进度状态
+    downloadProgress.value = 0
+    isDownloading.value = true
+    
     // 显示加载提示
     const loadingInstance = ElLoading.service({
       lock: true,
-      text: '获取图片数据中...',
+      text: '获取图片数据中... 0%',
       background: 'rgba(0, 0, 0, 0.7)'
     })
+    
+    // 下载进度回调函数
+    const onDownloadProgress = (progressEvent) => {
+      if (progressEvent.lengthComputable) {
+        const percentCompleted = Math.round((progressEvent.loaded / progressEvent.total) * 100)
+        downloadProgress.value = percentCompleted
+        
+        // 更新加载提示文本
+        if (loadingInstance && loadingInstance.setText) {
+          loadingInstance.setText(`获取图片数据中... ${percentCompleted}%`)
+        }
+        
+        debugLog(`下载进度: ${percentCompleted}% (${progressEvent.loaded}/${progressEvent.total})`)
+      }
+    }
     
     let imageLoadSuccess = false
     let textLoadSuccess = false
     
     try {
-      const imageResponse = await getTempImageFromPath(filePath, contentType)
+      const imageResponse = await getTempImageFromPath(filePath, contentType, onDownloadProgress)
       
       // 创建一个Blob对象
       const blob = new Blob([imageResponse.data], { type: contentType })
@@ -567,6 +603,8 @@ const handleConvertResult = async (filePath, contentType) => {
         debugLog('大文件Blob URL已创建但不显示:', charImageUrl.value)
         // 关闭加载提示
         loadingInstance.close()
+        // 重置下载状态
+        isDownloading.value = false
         imageLoadSuccess = true
       } else {
         // 正常大小的图片，重置大图片标志并显示
@@ -579,11 +617,15 @@ const handleConvertResult = async (filePath, contentType) => {
           debugLog('图片加载成功')
           // 关闭加载提示
           loadingInstance.close()
+          // 重置下载状态
+          isDownloading.value = false
         }
         img.onerror = (e) => {
           console.error('图片加载失败:', e)
           // 关闭加载提示
           loadingInstance.close()
+          // 重置下载状态
+          isDownloading.value = false
         }
         img.src = charImageUrl.value
         imageLoadSuccess = true
@@ -592,6 +634,8 @@ const handleConvertResult = async (filePath, contentType) => {
       console.error('获取图片数据失败:', e)
       ElMessage.warning('获取图片数据失败')
       loadingInstance.close()
+      // 重置下载状态
+      isDownloading.value = false
       throw new Error('获取图片数据失败: ' + (e.message || '未知错误'))
     }
     
@@ -858,6 +902,36 @@ onMounted(() => {
   padding: 0 20px;
   max-width: 800px;
   margin: 20px auto;
+}
+
+.download-progress-container {
+  margin-top: 15px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.download-progress :deep(.el-progress-bar__outer) {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.download-progress :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #67c23a, #85ce61);
+}
+
+.download-progress :deep(.el-progress__text) {
+  color: #ffffff !important;
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.download-info {
+  margin-top: 8px;
+  text-align: center;
+  color: #ffffff;
+  font-size: 0.9em;
+  font-weight: 500;
 }
 
 .progress-info {
