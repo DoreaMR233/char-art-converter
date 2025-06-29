@@ -134,14 +134,16 @@ export const convertImage = (formData, onProgress) => {
  * @param {string} tempDirName - 临时文件夹名称。
  * @param {string} fileName - 文件名。
  * @param {string} contentType - 图片的内容类型。
+ * @param {function} onDownloadProgress - 可选的下载进度回调函数。
  * @returns {Promise<import('axios').AxiosResponse<Blob>>} 包含图片Blob数据的响应对象。
  */
-export const getTempImage = (tempDirName, fileName, contentType) => {
+export const getTempImage = (tempDirName, fileName, contentType, onDownloadProgress) => {
   return api.get(`/get-temp-image/${tempDirName}/${fileName}`, {
     responseType: 'blob',
     headers: {
       'Accept': contentType || 'image/*'
-    }
+    },
+    onDownloadProgress: onDownloadProgress
   })
 }
 
