@@ -363,6 +363,9 @@ const processImageOriginal = async () => {
   // 重置处理状态
   resetProcessingState()
   
+  // 重置结果处理标志，允许新的转换任务处理结果
+  isHandlingResult = false
+  
   try {
     if (!imageFile.value) {
       ElMessage.error('请先选择图片')
@@ -515,6 +518,9 @@ const processImageOriginal = async () => {
   }
 }
 
+// 添加标志来防止重复调用handleConvertResult
+let isHandlingResult = false
+
 /**
  * 处理转换结果的方法
  * 当收到SSE的convertResult消息时调用，获取图片和文本
@@ -522,6 +528,21 @@ const processImageOriginal = async () => {
  * @param {string} contentType - 内容类型
  */
 const handleConvertResult = async (filePath, contentType) => {
+  // 检查是否已经在处理结果，防止重复调用
+  if (isHandlingResult) {
+    debugLog('handleConvertResult已在处理中，忽略重复调用')
+    return
+  }
+  
+  // 检查EventSource连接状态，只有在连接正常时才处理
+  if (eventSource && eventSource.readyState !== EventSource.OPEN) {
+    debugLog('EventSource连接状态异常，忽略转换结果处理', eventSource.readyState)
+    return
+  }
+  
+  // 设置处理标志
+  isHandlingResult = true
+  
   try {
     debugLog('文件路径:', filePath)
     debugLog('内容类型:', contentType)
@@ -677,6 +698,9 @@ const handleConvertResult = async (filePath, contentType) => {
     
     // 获取转换结果失败时延时关闭进度条
     closeProgressWithDelay()
+  } finally {
+    // 重置处理标志，允许下次调用
+    isHandlingResult = false
   }
 }
 
