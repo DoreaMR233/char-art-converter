@@ -18,23 +18,13 @@ const apiBasePath = import.meta.env.VITE_API_BASE_PATH || '/api';
 const apiFullBasePath = basePath === '' ? apiBasePath : `/${basePath}${apiBasePath}`;
 
 /**
- * 订阅图片转换进度。
- *
- * @function subscribeToProgress
- * @description 通过Server-Sent Events (SSE) 实时获取图片转换进度。
- * @param {string} id - 用于标识特定转换任务的唯一ID。
- * @param {function} onMessage - 包含不同事件类型回调函数的对象。
- * @param {(data: any) => void} onMessage.onProgress - 接收进度更新的回调函数。
- * @param {(data: any) => void} onMessage.onComplete - 转换完成时的回调函数。
- * @param {(error: any) => void} onMessage.onError - 发生错误时的回调函数。
- * @param {() => void} onMessage.onOpen - SSE连接成功建立时的回调函数。
- * @param {() => void} onMessage.onClose - SSE连接关闭时的回调函数。
+ * 绑定EventSource事件监听器的统一函数
+ * @param {EventSource} eventSource - EventSource实例
+ * @param {string} id - 进度ID
+ * @param {function} onMessage - 消息回调函数
+ * @param {object} state - 状态对象，包含shouldNotReconnect, heartbeatCount等
  */
-export const subscribeToProgress = (id, onMessage) => {
-  let eventSource = new EventSource(`${apiFullBasePath}/progress/${id}`)
-  let shouldNotReconnect = false // 标志是否应该禁止重连
-  let heartbeatCount = 0 // 心跳计数器
-  
+const bindEventListeners = (eventSource, id, onMessage, state) => {
   /**
    * @event onopen
    * @description 连接打开时的处理
@@ -44,20 +34,20 @@ export const subscribeToProgress = (id, onMessage) => {
     debugLog('EventSource readyState:', eventSource.readyState)
   }
 
-      /**
-     * 处理心跳消息，用于维持连接活跃。
-     */
+  /**
+   * 处理心跳消息，用于维持连接活跃。
+   */
   eventSource.addEventListener("heartbeat",(event) => {
     debugLog('收到心跳消息',event.data)
     
     // 增加心跳计数
-    heartbeatCount++
-    debugLog(`心跳计数: ${heartbeatCount}`)
+    state.heartbeatCount++
+    debugLog(`心跳计数: ${state.heartbeatCount}`)
     
     // 如果心跳次数过多，主动关闭连接并通知用户超时
-    if (heartbeatCount >= 12) { // 12 * 10s = 120s
+    if (state.heartbeatCount >= 12) { // 12 * 10s = 120s
       console.warn('心跳计数达到12次，连接超时，主动关闭连接')
-      shouldNotReconnect = true
+      state.shouldNotReconnect = true
       
       // 调用后端关闭接口
       try {
@@ -85,16 +75,16 @@ export const subscribeToProgress = (id, onMessage) => {
     }
   })
 
-      /**
-     * 处理初始化消息，确认SSE连接已建立。
-     */
+  /**
+   * 处理初始化消息，确认SSE连接已建立。
+   */
   eventSource.addEventListener("init",(event) => {
     debugLog('已接收到后端消息：',event.data)
   })
   
-      /**
-     * 处理关闭消息，由服务器主动发起，通知客户端关闭连接。
-     */
+  /**
+   * 处理关闭消息，由服务器主动发起，通知客户端关闭连接。
+   */
   eventSource.addEventListener("close",(event) => {
     debugLog('收到服务器关闭连接消息:', event.data)
     
@@ -164,7 +154,7 @@ export const subscribeToProgress = (id, onMessage) => {
       
       // 根据关闭原因决定是否禁止重连
       if (closeReason === 'ERROR_OCCURRED' || closeReason === 'HEARTBEAT_TIMEOUT' || closeReason === 'TASK_COMPLETED') {
-        shouldNotReconnect = true
+        state.shouldNotReconnect = true
         debugLog('因为错误/超时/完成任务关闭，禁止重连')
       }
       // 调用后端关闭接口，传递关闭原因
@@ -208,7 +198,7 @@ export const subscribeToProgress = (id, onMessage) => {
       debugLog('收到进度消息，解析后的数据:', data)
       
       // 收到进度消息时重置心跳计数
-      heartbeatCount = 0
+      state.heartbeatCount = 0
       
       // 确保数据中包含必要的字段
       if (data && typeof data === 'object') {
@@ -247,12 +237,18 @@ export const subscribeToProgress = (id, onMessage) => {
    * @param {Event} event - 事件对象，包含转换结果数据
    */
   eventSource.addEventListener("convertResult",(event) => {
+    // 检查连接状态，只有在连接正常时才处理消息
+    if (eventSource.readyState !== EventSource.OPEN) {
+      debugLog('EventSource连接状态异常，忽略convertResult消息', eventSource.readyState)
+      return
+    }
+    
     try {
       const data = JSON.parse(event.data)
       debugLog('收到转换结果消息，解析后的数据:', data)
       
       // 收到转换结果消息时重置心跳计数
-      heartbeatCount = 0
+      state.heartbeatCount = 0
       
       // 新格式：直接使用ConvertResult对象
       if (data && data.id && data.filePath) {
@@ -280,24 +276,18 @@ export const subscribeToProgress = (id, onMessage) => {
   })
 
   /**
-   * @description 错误处理配置 - 定义重试次数和最大重试限制
-   */
-  let retryCount = 0
-  const maxRetries = 3
-  
-  /**
    * @event onerror
    * @description 处理连接错误 - 连接错误或中断时的处理
    * @param {Event} error - 错误事件对象
    */
   eventSource.onerror = function(error) {
-    if (shouldNotReconnect) {
+    if (state.shouldNotReconnect) {
       console.info('EventSource因错误/超时/完成任务关闭:', error)
     }else{
       console.error('EventSource连接错误:', error)
       debugLog('EventSource readyState:', eventSource.readyState)
-    debugLog('EventSource URL:', eventSource.url)
-    debugLog('错误详情:', {
+      debugLog('EventSource URL:', eventSource.url)
+      debugLog('错误详情:', {
         type: error.type,
         target: error.target,
         timeStamp: error.timeStamp
@@ -311,7 +301,7 @@ export const subscribeToProgress = (id, onMessage) => {
     }
     
     // 检查是否因为错误或超时而禁止重连
-    if (shouldNotReconnect) {
+    if (state.shouldNotReconnect) {
       debugLog('因为错误/超时/完成任务关闭，不进行重连')
       return
     }
@@ -320,14 +310,14 @@ export const subscribeToProgress = (id, onMessage) => {
     if (eventSource.readyState === EventSource.CONNECTING) {
       debugLog('连接建立中遇到错误，尝试重连...')
       
-      if (retryCount < maxRetries) {
-        retryCount++
-        debugLog(`第${retryCount}次重连尝试...`)
+      if (state.retryCount < state.maxRetries) {
+        state.retryCount++
+        debugLog(`第${state.retryCount}次重连尝试...`)
         
         // 通知UI显示重连状态
         onMessage({
           connectionStatus: 'reconnecting',
-          message: `连接中断，正在重连... (${retryCount}/${maxRetries})`
+          message: `连接中断，正在重连... (${state.retryCount}/${state.maxRetries})`
         })
         
         setTimeout(() => {
@@ -336,11 +326,15 @@ export const subscribeToProgress = (id, onMessage) => {
             if (eventSource.readyState !== EventSource.CLOSED) {
               eventSource.close()
             }
-            // 创建新的连接
-            const newEventSource = subscribeToProgress(id, onMessage)
-            // 更新引用
-            Object.setPrototypeOf(eventSource, Object.getPrototypeOf(newEventSource))
-            Object.assign(eventSource, newEventSource)
+            // 创建新的EventSource实例
+            const newEventSource = new EventSource(`${apiFullBasePath}/progress/${id}`)
+            
+            // 将新实例的引用赋值给当前变量
+            eventSource = newEventSource
+            
+            // 重新绑定所有事件监听器
+            bindEventListeners(eventSource, id, onMessage, state)
+            
           } catch (reconnectError) {
             console.error('重连时出错:', reconnectError)
             onMessage({
@@ -370,6 +364,36 @@ export const subscribeToProgress = (id, onMessage) => {
       debugLog('连接状态异常，readyState:', eventSource.readyState)
     }
   }
+}
+
+/**
+ * 订阅图片转换进度。
+ *
+ * @function subscribeToProgress
+ * @description 通过Server-Sent Events (SSE) 实时获取图片转换进度。
+ * @param {string} id - 用于标识特定转换任务的唯一ID。
+ * @param {function} onMessage - 包含不同事件类型回调函数的对象。
+ * @param {(data: any) => void} onMessage.onProgress - 接收进度更新的回调函数。
+ * @param {(data: any) => void} onMessage.onComplete - 转换完成时的回调函数。
+ * @param {(error: any) => void} onMessage.onError - 发生错误时的回调函数。
+ * @param {() => void} onMessage.onOpen - SSE连接成功建立时的回调函数。
+ * @param {() => void} onMessage.onClose - SSE连接关闭时的回调函数。
+ */
+export const subscribeToProgress = (id, onMessage) => {
+  let eventSource = new EventSource(`${apiFullBasePath}/progress/${id}`)
+  
+  // 创建状态对象来管理连接状态
+  const state = {
+    shouldNotReconnect: false, // 标志是否应该禁止重连
+    heartbeatCount: 0, // 心跳计数器
+    retryCount: 0, // 重试计数器
+    maxRetries: 3 // 最大重试次数
+  }
+  
+  // 绑定所有事件监听器
+  bindEventListeners(eventSource, id, onMessage, state)
+  
+
 
   return eventSource
 }
