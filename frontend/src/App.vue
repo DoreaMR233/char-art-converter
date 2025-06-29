@@ -234,8 +234,6 @@ const hasCharText = ref(false)
  */
 /** @type {EventSource | null} SSE连接实例 */
 let eventSource = null
-/** @type {boolean} 控制是否应该关闭SSE连接的标志 */
-let shouldCloseConnection = false
 /** @type {number | null} 进度条延时关闭定时器ID */
 let progressCloseTimer = null
 
@@ -264,9 +262,6 @@ const closeProgressWithDelay = () => {
  * @description 在开始新的转换任务前，重置与上一次任务相关的状态，如SSE连接关闭标志和定时器。
  */
 const resetProcessingState = () => {
-  // 重置连接关闭标志
-  shouldCloseConnection = false
-  
   // 清除之前的进度条关闭定时器
   if (progressCloseTimer) {
     clearTimeout(progressCloseTimer)
@@ -413,7 +408,8 @@ const processImageOriginal = async () => {
       
       // 处理转换结果消息
       if (data.type === 'convertResult') {
-        console.log('收到转换结果，开始获取图片和文本...')
+        debugLog('收到convertResult，即将获取字符画图片和字符画文本')
+        // 然后获取图片和文本
         await handleConvertResult(data.filePath, data.contentType)
         return
       }
@@ -432,16 +428,12 @@ const processImageOriginal = async () => {
             // 显示连接失败的提示
             progressStage.stage.value = '连接失败'
             progressStage.message.value = '连接失败，请刷新页面重试'
-            // 连接失败时关闭进度条
-            shouldCloseConnection = true
             closeProgressWithDelay()
             break
           case 'error':
             // 显示连接错误的提示
             progressStage.stage.value = 'SSE连接错误'
             progressStage.message.value = 'SSE连接错误，请检查网络连接'
-            // 连接错误时关闭进度条
-            shouldCloseConnection = true
             closeProgressWithDelay()
             break
           case 'closed':
@@ -464,8 +456,6 @@ const processImageOriginal = async () => {
                 progressStage.message.value = 'SSE连接已关闭'
                 break
             }
-            // 连接关闭时关闭进度条
-            shouldCloseConnection = true
             closeProgressWithDelay()
         }
       }
@@ -496,9 +486,6 @@ const processImageOriginal = async () => {
     progressStage.stage.value = '处理失败'
     progressStage.message.value = '处理失败'
     
-    // 发生错误时设置应该关闭连接的标志
-    shouldCloseConnection = true
-    
     // 发生错误时延时关闭进度条
     closeProgressWithDelay()
     
@@ -506,15 +493,6 @@ const processImageOriginal = async () => {
     if (typeof loadingInstance !== 'undefined' && loadingInstance) {
       loadingInstance.close()
     }
-  } finally {
-    // 只有在应该关闭连接时才关闭EventSource连接
-    if (eventSource && shouldCloseConnection) {
-      debugLog('关闭EventSource连接')
-      eventSource.close()
-      eventSource = null
-    }
-    // 注意：不再直接设置 isProcessing.value = false
-    // 现在由 closeProgressWithDelay() 函数来延时关闭进度条
   }
 }
 
@@ -667,13 +645,7 @@ const handleConvertResult = async (filePath, contentType) => {
       ElMessage.error('转换失败，请刷新页面后重试')
     }
     
-    // 转换完成时设置应该关闭连接的标志并关闭连接
-    shouldCloseConnection = true
-    if (eventSource) {
-      debugLog('转换完成，关闭EventSource连接')
-      eventSource.close()
-      eventSource = null
-    }
+    // SSE连接已在收到convertResult事件时关闭，这里不需要再次关闭
     
     // 转换完成时延时关闭进度条
     closeProgressWithDelay()
@@ -688,13 +660,7 @@ const handleConvertResult = async (filePath, contentType) => {
     progressStage.stage.value = '获取结果失败'
     progressStage.message.value = '获取转换结果失败'
     
-    // 获取转换结果失败时设置应该关闭连接的标志并关闭连接
-    shouldCloseConnection = true
-    if (eventSource) {
-      debugLog('获取转换结果失败，关闭EventSource连接')
-      eventSource.close()
-      eventSource = null
-    }
+    // SSE连接已在收到convertResult事件时关闭，这里不需要再次关闭
     
     // 获取转换结果失败时延时关闭进度条
     closeProgressWithDelay()
