@@ -1,5 +1,9 @@
 # 多阶段构建Dockerfile
 
+# 全局构建参数 确保各阶段一致
+ARG BACKEND_PORT=8080
+ARG VITE_MAX_UPLOAD_SIZE=10
+
 # 阶段1: 构建后端
 FROM maven:3.8.4-openjdk-11-slim AS backend-build
 
@@ -49,22 +53,56 @@ RUN npm install
 # 复制项目文件
 COPY frontend/ .
 
-# 确保.env文件存在
-# RUN if [ ! -f .env ]; then \
-#     echo "# 默认环境变量配置" > .env && \
-#     echo "VITE_APP_TITLE=字符画转换器" >> .env && \
-#     echo "VITE_APP_VERSION=1.0.0" >> .env && \
-#     echo "VITE_API_BASE_PATH=/api" >> .env && \
-#     echo "VITE_MAX_UPLOAD_SIZE=10" >> .env; \
-#     fi
 
+# .env.example 中的变量
+ARG VITE_APP_TITLE
+ARG VITE_APP_VERSION
+ARG VITE_MAX_UPLOAD_SIZE
+# .env.production.example 中的变量
 # 如果提供了VITE_BASE_PATH环境变量，则更新.env.production文件
 ARG VITE_BASE_PATH
-ARG BACKEND_PORT=8080
-ARG API_URL="http://127.0.0.1:${BACKEND_PORT}"
+ARG VITE_DEBUG
+ARG VITE_SOURCEMAP
+# 继承全局BACKEND_PORT参数
+ARG BACKEND_PORT
+ENV VITE_API_URL="http://127.0.0.1:${BACKEND_PORT}" \
+    VITE_API_BASE_PATH="/api" \
+    VITE_MAX_UPLOAD_SIZE=${VITE_MAX_UPLOAD_SIZE}
 RUN if [ -f .env.production ]; then \
     sed -i "/^VITE_BASE_PATH=/c\VITE_BASE_PATH=$VITE_BASE_PATH" .env.production; \
     sed -i "/^VITE_API_URL=/c\VITE_API_URL=$API_URL" .env.production; \
+    fi
+
+# 如果提供了构建参数，则更新相应的环境变量文件
+RUN if [ -f .env.production ]; then \
+    if [ -n "$VITE_API_URL" ]; then \
+        sed -i "/^VITE_API_URL=/c\VITE_API_URL=$VITE_API_URL" .env.production; \
+    fi; \
+    if [ -n "$VITE_BASE_PATH" ]; then \
+        sed -i "/^VITE_BASE_PATH=/c\VITE_BASE_PATH=$VITE_BASE_PATH" .env.production; \
+    fi; \
+    if [ -n "$VITE_DEBUG" ]; then \
+        sed -i "/^VITE_DEBUG=/c\VITE_DEBUG=$VITE_DEBUG" .env.production; \
+    fi; \
+    if [ -n "$VITE_SOURCEMAP" ]; then \
+        sed -i "/^VITE_SOURCEMAP=/c\VITE_SOURCEMAP=$VITE_SOURCEMAP" .env.production; \
+    fi; \
+    fi
+
+# 处理 .env 文件中的通用变量（如果存在）
+RUN if [ -f .env ]; then \
+    if [ -n "$VITE_APP_TITLE" ]; then \
+        sed -i "/^VITE_APP_TITLE=/c\VITE_APP_TITLE=$VITE_APP_TITLE" .env; \
+    fi; \
+    if [ -n "$VITE_APP_VERSION" ]; then \
+        sed -i "/^VITE_APP_VERSION=/c\VITE_APP_VERSION=$VITE_APP_VERSION" .env; \
+    fi; \
+    if [ -n "$VITE_API_BASE_PATH" ]; then \
+        sed -i "/^VITE_API_BASE_PATH=/c\VITE_API_BASE_PATH=$VITE_API_BASE_PATH" .env; \
+    fi; \
+    if [ -n "$VITE_MAX_UPLOAD_SIZE" ]; then \
+        sed -i "/^VITE_MAX_UPLOAD_SIZE=/c\VITE_MAX_UPLOAD_SIZE=$VITE_MAX_UPLOAD_SIZE" .env; \
+    fi; \
     fi
 
 # 构建生产版本
@@ -109,8 +147,10 @@ RUN apt-get update --option Acquire::Retries=5 \
     redis-tools \
     fontconfig \
     libfreetype6 \
+    libwebp-dev \
     supervisor \
     wget \
+    gettext \
     && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
     && python3.9 get-pip.py \
     && rm get-pip.py \
@@ -122,17 +162,16 @@ RUN apt-get update --option Acquire::Retries=5 \
 # 设置工作目录
 WORKDIR /app
 
-# 设置默认环境变量
-ARG BACKEND_PORT=8080
+# 继承全局参数并固化为环境变量
+ARG BACKEND_PORT
+ENV BACKEND_PORT=${BACKEND_PORT} \
+    MAX_UPLOAD_SIZE=${VITE_MAX_UPLOAD_SIZE}
 #前端、后端、Flask端文件夹位置
 ENV BACKEND_PATH=/app/backend \
     FRONTEND_PATH=/app/frontend \
     WEBP_PROCESSOR=/app/webp-processor \
-    TIMEZONE=Asia/Shanghai \
     LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    # TEST环境变量无用，仅方便注解
-    TEST=TEST
+    LC_ALL=C.UTF-8
     
 
 # 前端、后端、Flask端日志文件夹和临时文件文件夹位置
@@ -145,9 +184,10 @@ ENV BACKEND_LOG_FILE_PATH=$BACKEND_PATH/logs \
     SUPERVISORD_PID_PATH=/var/run \
     SUPERVISORD_CONFIG_PATH=/etc/supervisor/conf.d
 
-# 前端、后端、Flask端的端口和路径配置
+# 前端、后端、Flask端、Redis的端口和路径配置
 ENV REDIS_HOST=localhost \
     REDIS_PORT=6379 \
+    REDIS_PASSWORD= \
     SERVER_PORT=${BACKEND_PORT} \
     PORT=8081
 ENV WEBP_PROCESSOR_URL=http://localhost:$PORT \

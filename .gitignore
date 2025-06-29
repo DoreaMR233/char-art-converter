@@ -58,11 +58,7 @@ ENV/
 
 # IDE相关
 .idea/
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+.vscode/
 *.iml
 *.ipr
 *.iws
@@ -85,3 +81,6 @@ frontend/.env.development
 frontend/.env.production
 python_webp_processor/logs
 python_webp_processor/data
+
+# 配置文件
+backend/src/main/resources/application.properties

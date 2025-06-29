@@ -270,142 +270,72 @@ docker-compose up -d
 
 ### 配置文件说明
 
-#### 通用配置
+#### 配置参数说明
 
-```bash
-# 时区设置
-TIMEZONE=Asia/Shanghai
-
-# 上传文件最大大小 (MB)
-MAX_UPLOAD_SIZE=10
-
-# 临时文件目录
-TEMP_DIR_PATH=/tmp/char-art-converter
-```
-
-#### 后端服务配置
-
-```properties
-# 服务器配置
-server.port=8080
-server.servlet.context-path=/
-
-# 文件上传配置
-spring.servlet.multipart.max-file-size=10MB
-spring.servlet.multipart.max-request-size=10MB
-
-# Redis配置
-spring.redis.host=localhost
-spring.redis.port=6379
-spring.redis.database=0
-spring.redis.timeout=2000ms
-
-# 字符画转换配置
-char-art.density.low=10
-char-art.density.medium=20
-char-art.density.high=30
-char-art.cache.ttl=3600
-
-# WebP处理服务配置
-webp.processor.url=http://localhost:8081
-webp.processor.timeout=30000
-```
-
-#### 前端服务配置
-
-```bash
-# 应用基本信息
-VITE_APP_TITLE=字符画转换器
-VITE_APP_VERSION=1.0.0
-
-# API配置
-VITE_API_BASE_PATH=/api
-VITE_API_TIMEOUT=30000
-
-# 上传配置
-VITE_MAX_UPLOAD_SIZE=10
-
-# 功能开关
-VITE_ENABLE_GIF_SUPPORT=true
-VITE_ENABLE_WEBP_SUPPORT=true
-VITE_ENABLE_PROGRESS_DISPLAY=true
-```
-
-#### WebP处理器配置
-
-```bash
-# 服务配置
-HOST=0.0.0.0
-PORT=8081
-DEBUG=false
-
-# Redis配置
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_PASSWORD=
-
-# 文件存储配置
-UPLOAD_FOLDER=/tmp/webp_uploads
-MAX_CONTENT_LENGTH=10485760
-
-# 日志配置
-LOG_LEVEL=INFO
-LOG_FILE=/var/log/webp_processor.log
-```
-
-#### Redis配置
-
-```bash
-# Redis服务配置
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
-
-# 连接池配置
-REDIS_MAX_CONNECTIONS=10
-REDIS_TIMEOUT=2000
-
-# 缓存配置
-CACHE_TTL=3600
-CACHE_PREFIX=char_art:
-```
-
-#### 日志配置
-
-```bash
-# 日志级别
-LOG_LEVEL=INFO
-
-# 日志文件路径
-BACKEND_LOG_FILE_PATH=/var/log/backend
-WEBP_LOG_FILE_PATH=/var/log/webp_processor
-SUPERVISORD_LOG_PATH=/var/log/supervisord
-
-# 日志轮转配置
-LOG_MAX_SIZE=100MB
-LOG_MAX_FILES=10
-```
-
-#### 字符画配置
-
-```bash
-# 字符密度配置
-CHAR_DENSITY_LOW=10
-CHAR_DENSITY_MEDIUM=20
-CHAR_DENSITY_HIGH=30
-
-# 字符集配置
-CHAR_SET_SIMPLE=" .:-=+*#%@"
-CHAR_SET_COMPLEX=" .`'^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
-
-# 输出配置
-OUTPUT_FORMAT=both
-IMAGE_QUALITY=85
-FONT_SIZE=12
-FONT_FAMILY=monospace
-```
+| 变量名称 | 变量中文名 | 变量作用 | 变量默认值 |
+|---------|-----------|----------|----------|
+| **后端服务配置** | | | |
+| server.port | 服务器端口 | 设置应用服务器监听端口 | 8080 |
+| spring.servlet.multipart.max-file-size | 单个文件最大大小 | 限制上传单个文件的最大大小 | 10MB |
+| spring.servlet.multipart.max-request-size | 请求最大大小 | 限制整个请求的最大大小 | 10MB |
+| spring.servlet.multipart.location | 文件上传临时目录 | 指定multipart文件的临时存储位置 | /app/temp |
+| logging.level.com.doreamr233.charartconverter | 应用日志级别 | 设置应用程序的日志输出级别 | INFO |
+| logging.file.name | 日志文件路径 | 指定日志文件的存储路径 | /app/logs/char-art-converter.log |
+| logging.logback.rollingpolicy.max-file-size | 日志文件最大大小 | 单个日志文件的最大大小 | 10MB |
+| logging.logback.rollingpolicy.max-history | 日志文件保留天数 | 日志文件的最大保留数量 | 30 |
+| logging.pattern.dateformat | 日志时间格式 | 日志中时间戳的格式 | yyyy-MM-dd HH:mm:ss.SSS |
+| logging.charset.console | 控制台日志编码 | 控制台输出日志的字符编码 | UTF-8 |
+| logging.charset.file | 文件日志编码 | 日志文件的字符编码 | UTF-8 |
+| spring.jackson.time-zone | Jackson时区设置 | JSON序列化时的时区设置 | Asia/Shanghai |
+| spring.mvc.format.date-time | 日期时间格式 | MVC层日期时间的格式化模式 | yyyy-MM-dd HH:mm:ss |
+| char-art.default-density | 默认字符密度 | 字符画转换的默认密度设置 | medium |
+| char-art.default-color-mode | 默认颜色模式 | 字符画转换的默认颜色模式 | grayscale |
+| char-art.temp-directory | 字符画临时目录 | 字符画处理过程中的临时文件存储目录 | /app/temp |
+| java.io.tmpdir | Java系统临时目录 | Java系统级临时文件目录 | /app/temp |
+| char-art.temp-file.max-retention-hours | 临时文件最大保留时间 | 临时文件的最大保留时间（小时） | 24 |
+| char-art.temp-file.cleanup-enabled | 临时文件清理开关 | 是否启用临时文件自动清理 | true |
+| spring.redis.host | Redis主机地址 | Redis服务器的主机地址 | localhost |
+| spring.redis.port | Redis端口 | Redis服务器的端口号 | 6379 |
+| spring.redis.database | Redis数据库索引 | 使用的Redis数据库索引 | 0 |
+| spring.redis.password | Redis密码 | Redis服务器的连接密码 | （空） |
+| spring.redis.timeout | Redis连接超时时间 | Redis连接的超时时间（毫秒） | 60000 |
+| char-art.cache.ttl | 缓存过期时间 | 字符画缓存的生存时间（秒） | 3600 |
+| char-art.cache.default_key_prefix | 缓存键前缀 | 字符画缓存键的默认前缀 | char-art:text: |
+| webp-processor.url | WebP处理服务URL | WebP处理服务的访问地址 | http://localhost:8081 |
+| webp-processor.enabled | WebP处理服务开关 | 是否启用WebP处理服务 | true |
+| webp-processor.connection-timeout | WebP服务连接超时 | WebP服务的连接超时时间（毫秒） | 600000 |
+| webp-processor.max-retries | WebP服务最大重试次数 | WebP服务调用失败时的最大重试次数 | 2 |
+| char-art.parallel.max-frame-threads | 最大并行帧数 | 同时处理的帧数上限 | 4 |
+| char-art.parallel.thread-pool-factor | 线程池大小因子 | 线程池大小计算因子（CPU核心数的倍数） | 0.5 |
+| char-art.parallel.min-threads | 最小线程数 | 线程池的最小线程数 | 1 |
+| char-art.parallel.progress-update-interval | 进度更新间隔 | 进度更新的时间间隔（毫秒） | 500 |
+| char-art.parallel.pixel-progress-interval | 像素进度报告间隔 | 像素处理进度报告间隔 | 1000 |
+| char-art.parallel.task-timeout | 任务执行超时时间 | 单个任务的最大执行时间（毫秒） | 60000 |
+| char-art.parallel.progress-cleanup-delay | 进度清理延迟 | 进度监听器清理的延迟时间（毫秒） | 60000 |
+| **前端服务配置** | | | |
+| VITE_APP_TITLE | 应用名称 | 设置应用程序的标题 | 字符画转换器 |
+| VITE_APP_VERSION | 应用版本 | 设置应用程序的版本号 | 1.0.0 |
+| VITE_API_BASE_PATH | API基础路径 | 设置API请求的基础路径 | /api |
+| VITE_MAX_UPLOAD_SIZE | 上传文件最大大小 | 限制前端上传文件的最大大小（MB） | 10 |
+| VITE_API_URL | API服务器地址 | 生产环境中的后端服务地址 | http://backend:8080 |
+| VITE_BASE_PATH | 资源路径前缀 | 应用部署在子路径下的路径前缀 | charart |
+| VITE_DEBUG | 调试模式开关 | 是否启用前端调试模式 | false |
+| VITE_SOURCEMAP | 源码映射开关 | 是否启用源码映射 | false |
+| **WebP处理器配置** | | | |
+| TIMEZONE | 时区设置 | 设置WebP处理器的时区 | Asia/Shanghai |
+| PORT | WebP服务端口 | WebP处理器服务监听端口 | 8081 |
+| LOG_LEVEL | 日志级别 | WebP处理器的日志输出级别 | INFO |
+| LOG_FILE | 日志文件路径 | WebP处理器日志文件存储路径 | /app/logs/webp-processor.log |
+| TEMP_FILE_TTL | 临时文件保留时间 | 临时文件的保留时间（秒） | 3600 |
+| TEMP_DIR | 临时文件目录 | 临时文件存储目录 | /app/data |
+| DEBUG | 调试模式 | 是否启用WebP处理器调试模式 | False |
+| MAX_CONTENT_LENGTH | 最大内容长度 | WebP处理器最大处理文件大小（字节） | 10485760 |
+| REDIS_HOST | Redis主机地址 | WebP处理器连接的Redis主机 | localhost |
+| REDIS_PORT | Redis端口 | WebP处理器连接的Redis端口 | 6379 |
+| REDIS_DB | Redis数据库 | WebP处理器使用的Redis数据库索引 | 0 |
+| REDIS_PASSWORD | Redis密码 | WebP处理器连接Redis的密码 | （空） |
+| PROGRESS_UPDATE_INTERVAL | 进度更新间隔 | WebP处理进度更新间隔（秒） | 0.5 |
+| JAVA_BACKEND_URL | Java后端服务URL | WebP处理器连接的Java后端服务地址 | http://localhost:8080 |
 
 ## 许可证
 

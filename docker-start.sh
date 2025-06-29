@@ -292,6 +292,25 @@ if [ ! -z "$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY" ]; then
   sed -i "s|char-art.parallel.progress-cleanup-delay=.*|char-art.parallel.progress-cleanup-delay=$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY|g" "$BACKEND_CONFIG_FILE"
 fi
 
+# 自定义临时文件清理配置
+if [ ! -z "$CHAR_ART_TEMP_FILE_MAX_RETENTION_HOURS" ]; then
+  sed -i "s|char-art.temp-file.max-retention-hours=.*|char-art.temp-file.max-retention-hours=$CHAR_ART_TEMP_FILE_MAX_RETENTION_HOURS|g" "$BACKEND_CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_TEMP_FILE_CLEANUP_ENABLED" ]; then
+  sed -i "s|char-art.temp-file.cleanup-enabled=.*|char-art.temp-file.cleanup-enabled=$CHAR_ART_TEMP_FILE_CLEANUP_ENABLED|g" "$BACKEND_CONFIG_FILE"
+fi
+
+# 自定义Java系统临时目录配置
+if [ ! -z "$DEFAULT_TEMP_PATH" ]; then
+  sed -i "s|java.io.tmpdir=.*|java.io.tmpdir=$DEFAULT_TEMP_PATH|g" "$BACKEND_CONFIG_FILE"
+fi
+
+# 自定义multipart临时文件位置配置
+if [ ! -z "$DEFAULT_TEMP_PATH" ]; then
+  sed -i "s|spring.servlet.multipart.location=.*|spring.servlet.multipart.location=$DEFAULT_TEMP_PATH|g" "$BACKEND_CONFIG_FILE"
+fi
+
 # 显示配置信息
 echo "使用以下配置启动char-art-converter："
 echo "-------------------"
@@ -415,8 +434,8 @@ mkdir -p /etc/redis
 echo "daemonize no" > /etc/redis/redis.conf
 echo "Redis配置文件已创建，设置为非守护进程模式"
 
-# 复制supervisord配置文件
-cp /app/supervisord.conf $SUPERVISORD_CONFIG_PATH/supervisord.conf
+# 使用envsubst替换supervisord.conf中的环境变量
+envsubst < /app/supervisord.conf > /etc/supervisor/supervisord.conf
 
 # 替换supervisord.conf中的环境变量
 if [ -f "$SUPERVISORD_CONFIG_PATH/supervisord.conf" ]; then
@@ -450,4 +469,4 @@ fi
 echo "=================================================="
 echo "      启动supervisord管理所有服务      "
 echo "=================================================="
-exec /usr/bin/supervisord -n -c $SUPERVISORD_CONFIG_PATH/supervisord.conf
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
