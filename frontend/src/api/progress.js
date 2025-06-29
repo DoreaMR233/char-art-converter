@@ -415,13 +415,16 @@ export const closeProgress = (id, closeReason = null) => {
 }
 
 /**
+ * 从路径获取临时图片的便捷函数。
+ *
  * @function getTempImageFromPath
  * @description 从路径信息中拆分临时文件夹名称和文件名，然后调用getTempImage获取图片
  * @param {string} filePath - 格式为"临时文件夹名/结果文件名"的路径信息
  * @param {string} contentType - 图片的内容类型
+ * @param {function} onDownloadProgress - 可选的下载进度回调函数
  * @returns {Promise<Object>} 包含图片Blob数据的响应对象
  */
-export const getTempImageFromPath = (filePath, contentType) => {
+export const getTempImageFromPath = (filePath, contentType, onDownloadProgress) => {
   // 拆分路径信息
   const pathParts = filePath.split('/')
   
@@ -432,5 +435,5 @@ export const getTempImageFromPath = (filePath, contentType) => {
   const [tempDirName, fileName] = pathParts
   
   // 调用convert.js中的getTempImage函数
-  return getTempImage(tempDirName, fileName, contentType)
+  return getTempImage(tempDirName, fileName, contentType, onDownloadProgress)
 }
