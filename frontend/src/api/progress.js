@@ -74,13 +74,6 @@ const bindEventListeners = (eventSource, id, onMessage, state) => {
       })
     }
   })
-
-  /**
-   * 处理初始化消息，确认SSE连接已建立。
-   */
-  eventSource.addEventListener("init",(event) => {
-    debugLog('已接收到后端消息：',event.data)
-  })
   
   /**
    * 处理关闭消息，由服务器主动发起，通知客户端关闭连接。
@@ -167,6 +160,11 @@ const bindEventListeners = (eventSource, id, onMessage, state) => {
         })
       } catch (error) {
         console.warn('调用后端关闭接口时发生异常:', error)
+      } finally {
+        // 关闭连接
+        if (eventSource && eventSource.readyState !== EventSource.CLOSED) {
+          eventSource.close()
+        }
       }
       
       // 通知UI连接已关闭，根据关闭原因设置不同状态
