@@ -4,9 +4,11 @@ server.port=8080
 # 上传文件配置
 spring.servlet.multipart.max-file-size=10MB
 spring.servlet.multipart.max-request-size=10MB
+# 指定multipart文件的临时存储位置，与应用临时目录保持一致
+spring.servlet.multipart.location=/app/temp
 
 # 日志配置
-logging.level.com.doreamr233.charartconverter=INFO
+logging.level.com.doreamr233.charartconverter=DEBUG
 # 日志文件配置
 logging.file.name=/app/logs/char-art-converter.log
 logging.logback.rollingpolicy.max-file-size=10MB
@@ -28,8 +30,15 @@ char-art.default-density=medium
 char-art.default-color-mode=grayscale
 
 # 临时文件目录配置
-# Windows环境下使用相对路径，会在项目根目录下创建temp文件夹
-char-art.temp-directory=./temp
+char-art.temp-directory=/app/temp
+# Java系统临时目录配置，与char-art.temp-directory保持一致
+java.io.tmpdir=/app/temp
+
+# 临时文件清理配置
+# 临时文件最大保留时间（小时），默认24小时
+char-art.temp-file.max-retention-hours=24
+# 是否启用临时文件清理，默认启用
+char-art.temp-file.cleanup-enabled=true
 
 # Redis配置
 spring.redis.host=localhost

@@ -10,7 +10,7 @@ import com.doreamr233.charartconverter.config.ParallelProcessingConfig;
 import com.doreamr233.charartconverter.config.TempDirectoryConfig;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
-import org.apache.commons.io.FileUtils;
+import cn.hutool.core.io.FileUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
@@ -89,6 +89,13 @@ public class WebpProcessorClient {
      */
     private final Map<String, CompletableFuture<WebpProcessResult>> pendingFutures = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<File>> pendingAnimationFutures = new ConcurrentHashMap<>();
+    
+    /**
+     * 存储任务ID与临时目录的映射
+     */
+    private final Map<String, Path> progressTempDirMap = new ConcurrentHashMap<>();
+    
+
 
     /**
      * 执行带有重试机制的HTTP请求
@@ -101,7 +108,7 @@ public class WebpProcessorClient {
         HttpResponse response;
         for (int i = 0; i <= maxRetriesCount; i++) {
             try {
-                log.info("WebP处理服务第{}次尝试，共{}次", i+1,maxRetriesCount+1);
+                log.debug("WebP处理服务第{}次尝试，共{}次", i+1,maxRetriesCount+1);
                 // 执行 HTTP 请求
                 if (i > 0){
                     try {
@@ -131,9 +138,9 @@ public class WebpProcessorClient {
      * @return 服务是否可用
      */
     public boolean isServiceAvailable() {
-        log.info("WebP处理服务的基本URL：{}", serviceBaseUrl);
-        log.info("WebP处理服务的连接超时时间（毫秒）：{}", maxTimeout);
-        log.info("WebP处理服务的最大重试次数：{}", maxRetriesCount);
+        log.debug("WebP处理服务的基本URL：{}", serviceBaseUrl);
+        log.debug("WebP处理服务的连接超时时间（毫秒）：{}", maxTimeout);
+        log.debug("WebP处理服务的最大重试次数：{}", maxRetriesCount);
         try {
             HttpResponse response = executeWithRetry(HttpUtil.createGet(serviceBaseUrl + "/api/health").timeout(maxTimeout));
             return response.getStatus() == HttpStatus.HTTP_OK;
@@ -150,7 +157,7 @@ public class WebpProcessorClient {
      */
     public String createProgressTask() {
         try {
-            log.info("创建WebP处理进度任务");
+            log.debug("创建WebP处理进度任务");
             
             // 发送请求并获取响应
             HttpResponse response = executeWithRetry(HttpUtil.createPost(serviceBaseUrl + "/api/progress/create")
@@ -164,7 +171,7 @@ public class WebpProcessorClient {
             // 解析JSON响应获取任务ID
             JSONObject jsonResponse = new JSONObject(response.body());
             String taskId = jsonResponse.getString("task_id");
-            log.info("成功创建进度任务，ID: {}", taskId);
+            log.debug("成功创建进度任务，ID: {}", taskId);
             
             return taskId;
         } catch (Exception e) {
@@ -208,7 +215,7 @@ public class WebpProcessorClient {
         }
         
         String streamUrl = getProgressStreamUrl(webPTaskId);
-        log.info("开始监听Flask SSE进度流: {}", streamUrl);
+        log.debug("开始监听Flask SSE进度流: {}", streamUrl);
         
         // 在新线程中执行，避免阻塞主线程
         Thread progressThread = new Thread(() -> {
@@ -227,13 +234,13 @@ public class WebpProcessorClient {
                     .header("Connection", "keep-alive")
                     .build();
             
-            log.info("SSE请求头: Accept={}, Cache-Control={}, Connection={}", 
+            log.debug("SSE请求头: Accept={}, Cache-Control={}, Connection={}", 
                     request.header("Accept"), 
                     request.header("Cache-Control"), 
                     request.header("Connection"));
             
             // 使用OkHttp执行请求
-            log.info("正在建立Flask SSE连接: {}", streamUrl);
+            log.debug("正在建立Flask SSE连接: {}", streamUrl);
             Call call = client.newCall(request);
             
             // 将Call对象存储到Map中，以便在需要时取消
@@ -256,7 +263,7 @@ public class WebpProcessorClient {
                 
                 // 检查响应头
                 String contentType = response.header("Content-Type");
-                log.info("成功建立Flask SSE连接: URL={}, 状态码={}, Content-Type={}", 
+                log.debug("成功建立Flask SSE连接: URL={}, 状态码={}, Content-Type={}", 
                         streamUrl, response.code(), contentType);
                 
                 if (contentType == null || !contentType.contains("text/event-stream")) {
@@ -277,12 +284,12 @@ public class WebpProcessorClient {
                     String eventName = null;
                     
                     while ((line = reader.readLine()) != null) {
-                        log.info("收到SSE行: {}", line);
+                        log.debug("收到SSE行: {}", line);
                         
                         // 空行表示事件结束
                         if (line.isEmpty()) {
                             if (eventData.length() > 0) {
-                                log.info("处理SSE事件: 名称={}, 数据长度={}", eventName, eventData.length());
+                                log.debug("处理SSE事件: 名称={}, 数据长度={}", eventName, eventData.length());
                                 // 处理事件数据
                                 int closeCode = processEventData(eventName, eventData.toString(), oriTaskId,webPTaskId);
                                 eventData = new StringBuilder();
@@ -290,11 +297,11 @@ public class WebpProcessorClient {
                                 
                                 // 如果处理结果表明应该关闭连接，则退出循环
                                 if (closeCode != 0  && closeCode != 1) {
-                                    log.info("任务{}出错，主动关闭SSE连接", webPTaskId);
+                                    log.debug("任务{}出错，主动关闭SSE连接", webPTaskId);
                                     closeProgressConnection(webPTaskId);
                                     break;
                                 } else if (closeCode != 0) {
-                                    log.info("任务{}正常完成", webPTaskId);
+                                    log.debug("任务{}正常完成", webPTaskId);
                                     break;
                                 }
                             } else {
@@ -311,7 +318,7 @@ public class WebpProcessorClient {
                         }
                     }
                     
-                    log.info("SSE连接已关闭: {}", streamUrl);
+                    log.debug("SSE连接已关闭: {}", streamUrl);
                 }
             } catch (Exception e) {
                 if (connectionLatch != null) {
@@ -327,11 +334,11 @@ public class WebpProcessorClient {
                     log.error("监听Flask SSE进度流时发生错误", e);
                     
                     // 发送错误关闭事件到前端
-                    try {
-                        progressService.sendCloseEvent(oriTaskId, CloseReason.ERROR_OCCURRED);
-                    } catch (Exception ex) {
-                        log.error("发送错误关闭事件失败", ex);
-                    }
+                try {
+                    progressService.sendCloseEvent(oriTaskId, CloseReason.ERROR_OCCURRED);
+                } catch (Exception ex) {
+                    log.error("发送错误关闭事件失败", ex);
+                }
                 }
             } finally {
                 if (connectionLatch != null) {
@@ -346,7 +353,7 @@ public class WebpProcessorClient {
         progressThread.setName("SSE-Progress-" + webPTaskId);
         progressThread.setDaemon(true); // 设置为守护线程，避免阻止JVM退出
         progressThread.start();
-        log.info("已启动进度监听线程: {}", progressThread.getName());
+        log.debug("已启动进度监听线程: {}", progressThread.getName());
     }
     
     /**
@@ -361,18 +368,18 @@ public class WebpProcessorClient {
     
     private int processEventData(String eventName, String eventData, String oriTaskId, String webPTaskId) {
         try {
-            log.info("处理SSE事件: 名称={}, 数据={}，任务编号={}", eventName, eventData,webPTaskId);
+            log.debug("处理SSE事件: 名称={}, 数据={}，任务编号={}", eventName, eventData,webPTaskId);
             // 处理心跳事件
             if ("heartbeat".equals(eventName)) {
-                log.info("收到Flask心跳事件");
+                log.debug("收到Flask心跳事件");
                 // 增加心跳计数
                 int count = heartbeatCounters.getOrDefault(webPTaskId, 0) + 1;
                 heartbeatCounters.put(webPTaskId, count);
-                log.info("任务{}的心跳计数: {}", webPTaskId, count);
+                log.debug("任务{}的心跳计数: {}", webPTaskId, count);
                 
                 // 如果心跳计数超过12次，发送心跳超时关闭事件并关闭SSE连接
                 if (count >= 12) {
-                    log.info("任务{}的心跳计数达到{}次，准备关闭SSE连接（心跳超时）", webPTaskId, count);
+                    log.debug("任务{}的心跳计数达到{}次，准备关闭SSE连接（心跳超时）", webPTaskId, count);
                     // 发送心跳超时关闭事件到前端
                     progressService.sendCloseEvent(oriTaskId, CloseReason.HEARTBEAT_TIMEOUT);
                     // 发送close消息到Python端，传递超时原因（会自动关闭SSE连接）
@@ -385,7 +392,7 @@ public class WebpProcessorClient {
             }
             // 处理close消息
             if ("close".equals(eventName)) {
-                log.info("收到Flask关闭事件，准备优雅关闭SSE连接");
+                log.debug("收到Flask关闭事件，准备优雅关闭SSE连接");
                 CloseReason closeReason = CloseReason.TASK_COMPLETED;
                 String message;
                 
@@ -397,7 +404,7 @@ public class WebpProcessorClient {
                     
                     // 根据Python端发送的原因确定关闭类型
                     closeReason = CloseReason.parseCloseReasonByPython(reason);
-                    log.info("Flask关闭事件: 消息={}, 原因={}", message, reason);
+                    log.debug("Flask关闭事件: 消息={}, 原因={}", message, reason);
                 } catch (Exception e) {
                     log.debug("解析关闭事件数据失败，使用默认处理: {}", e.getMessage());
                 }
@@ -405,7 +412,10 @@ public class WebpProcessorClient {
                 sendCloseMessage(webPTaskId, closeReason.toString());
                 // 清除心跳计数
                 heartbeatCounters.remove(webPTaskId);
-                log.info("已优雅关闭与Flask的SSE连接: {}", webPTaskId);
+                log.debug("已优雅关闭与Flask的SSE连接: {}", webPTaskId);
+                
+
+                
                 switch (closeReason){
                     case TASK_COMPLETED:
                         return 1;
@@ -428,7 +438,7 @@ public class WebpProcessorClient {
                 int totalPixels = jsonData.optInt("total_steps", 0);
                 boolean isDone = jsonData.optBoolean("is_done", false);
 
-                log.info("收到Flask进度更新: 任务={}, 进度={}%, 消息={}, 状态={}",
+                log.debug("收到Flask进度更新: 任务={}, 进度={}%, 消息={}, 状态={}",
                         webPTaskId, percentage, message, stage);
 
                 // 使用ProgressService更新进度
@@ -437,32 +447,32 @@ public class WebpProcessorClient {
 
                 // 如果进度达到100%，结束监听
                 if (isDone) {
-                    log.info("任务{}已完成", webPTaskId);
+                    log.debug("任务{}已完成", webPTaskId);
                 }
             }
             // 处理WebP处理结果事件
             if ("webp_result".equals(eventName)) {
-                log.info("收到WebP处理结果事件: 任务={}", webPTaskId);
+                log.debug("收到WebP处理结果事件: 任务={}", webPTaskId);
                 // 解析JSON数据
                 JSONObject jsonData = new JSONObject(eventData);
                 if (jsonData.has("webp")) {
                     // 这是WebP动画创建的结果
                     try {
                         String webpPath = jsonData.optString("webp", "");
-                        log.info("从SSE事件中获取到webp路径: {}", webpPath);
-                        log.info("完整的JSON数据: {}", jsonData);
+                        log.debug("从SSE事件中获取到webp路径: {}", webpPath);
+                        log.debug("完整的JSON数据: {}", jsonData);
                         
                         // 更新进度
                         progressService.updateProgress(oriTaskId, 98, "开始获取WebP动画文件", "文件获取", 0, 1, false);
                         
                         // 构建WebP文件URL
                         String webpUrl = serviceBaseUrl + "/api/get-image/" + webpPath;
-                        log.info("构建的WebP文件URL: {}", webpUrl);
+                        log.debug("构建的WebP文件URL: {}", webpUrl);
                         
                         // 使用HttpUtil获取WebP文件
-                        log.info("开始请求WebP文件: {}", webpUrl);
+                        log.debug("开始请求WebP文件: {}", webpUrl);
                         HttpResponse webpResponse = executeWithRetry(HttpUtil.createGet(webpUrl).timeout(maxTimeout));
-                        log.info("HTTP响应状态: {}, 响应体长度: {}", webpResponse.getStatus(), webpResponse.bodyBytes().length);
+                        log.debug("HTTP响应状态: {}, 响应体长度: {}", webpResponse.getStatus(), webpResponse.bodyBytes().length);
                         
                         if (webpResponse.getStatus() != HttpStatus.HTTP_OK) {
                             log.error("获取WebP文件失败: 状态码={}, 响应体={}", webpResponse.getStatus(), webpResponse.body());
@@ -477,25 +487,25 @@ public class WebpProcessorClient {
                             // 将响应体保存为临时文件
                             byte[] webpData = webpResponse.bodyBytes();
                             File tempFile = new File(tempDirectoryConfig.getTempDirectory(), "animation_" + System.currentTimeMillis() + ".webp");
-                            FileUtils.writeByteArrayToFile(tempFile, webpData);
+                            FileUtil.writeBytes(webpData, tempFile);
                             
                             // 更新最终进度
                             progressService.updateProgress(oriTaskId, 100, "WebP动画文件获取完成", "完成", 1, 1, false);
                             
-                            log.info("WebP动画创建成功，保存到临时文件: {}", tempFile.getAbsolutePath());
+                            log.debug("WebP动画创建成功，保存到临时文件: {}", tempFile.getAbsolutePath());
                             
                             // 完成对应的CompletableFuture
                             CompletableFuture<File> animationFuture = pendingAnimationFutures.remove(webPTaskId);
                             if (animationFuture != null) {
                                 animationFuture.complete(tempFile);
-                                log.info("WebP动画文件已通过CompletableFuture返回");
+                                log.debug("WebP动画文件已通过CompletableFuture返回");
                             } else {
                                 log.warn("未找到对应的动画CompletableFuture: {}", webPTaskId);
                             }
                         }
 
                         // WebP动画创建完成，主动关闭SSE连接
-                        log.info("WebP动画处理完成，主动关闭SSE连接: {}", webPTaskId);
+                        log.debug("WebP动画处理完成，主动关闭SSE连接: {}", webPTaskId);
                         sendCloseMessage(webPTaskId);
                         return 1; // WebP动画创建完成，关闭SSE连接
                     } catch (Exception e) {
@@ -509,7 +519,7 @@ public class WebpProcessorClient {
                         }
                         
                         // 处理出错时也要主动关闭SSE连接
-                        log.info("WebP动画处理出错，主动关闭SSE连接: {}", webPTaskId);
+                        log.debug("WebP动画处理出错，主动关闭SSE连接: {}", webPTaskId);
                         sendCloseMessage(webPTaskId, "ERROR_OCCURRED");
                         return 3; // 处理出错，也要关闭SSE连接
                     }
@@ -518,7 +528,7 @@ public class WebpProcessorClient {
                     int frameCount = jsonData.optInt("frameCount", 0);
                     if (frameCount > 0) {
                         // 这是WebP解析的结果
-                        log.info("收到WebP解析结果: 帧数={}", frameCount);
+                        log.debug("收到WebP解析结果: 帧数={}", frameCount);
                         try {
                             // 使用parseResponse方法解析响应
                             WebpProcessResult result = parseResponse(eventData, oriTaskId);
@@ -527,13 +537,13 @@ public class WebpProcessorClient {
                             CompletableFuture<WebpProcessResult> future = pendingFutures.remove(webPTaskId);
                             if (future != null) {
                                 future.complete(result);
-                                log.info("WebP解析结果已通过CompletableFuture返回");
+                                log.debug("WebP解析结果已通过CompletableFuture返回");
                             } else {
                                 log.warn("未找到其对应的CompletableFuture: {}", webPTaskId);
                             }
 
                             // WebP解析完成，主动关闭SSE连接
-                            log.info("WebP解析处理完成，主动关闭SSE连接: {}", webPTaskId);
+                            log.debug("WebP解析处理完成，主动关闭SSE连接: {}", webPTaskId);
                             sendCloseMessage(webPTaskId);
                             return 1; // WebP解析完成，关闭SSE连接
                         } catch (Exception e) {
@@ -546,7 +556,7 @@ public class WebpProcessorClient {
                             progressService.updateProgress(oriTaskId, 100, "解析WebP处理结果时发生错误: " + e.getMessage(), "错误", 0, 0, true);
                             
                             // 处理出错时也要主动关闭SSE连接
-                            log.info("WebP解析处理出错，主动关闭SSE连接: {}", webPTaskId);
+                            log.debug("WebP解析处理出错，主动关闭SSE连接: {}", webPTaskId);
                             sendCloseMessage(webPTaskId, "ERROR_OCCURRED");
                             return 3; // 处理出错，也要关闭SSE连接
                         }
@@ -560,7 +570,7 @@ public class WebpProcessorClient {
                         progressService.updateProgress(oriTaskId, 100, "WebP解析完成但数据不完整", "错误", 0, 0, true);
                         
                         // 数据不完整时也要主动关闭SSE连接
-                        log.info("WebP解析结果数据不完整，主动关闭SSE连接: {}", webPTaskId);
+                        log.debug("WebP解析结果数据不完整，主动关闭SSE连接: {}", webPTaskId);
                         sendCloseMessage(webPTaskId, "ERROR_OCCURRED");
                         return 3; // 数据不完整，关闭SSE连接
                     }
@@ -574,7 +584,7 @@ public class WebpProcessorClient {
                     progressService.updateProgress(oriTaskId, 100, "WebP处理完成但结果格式未知", "错误", 0, 0, true);
                     
                     // 结果格式未知时也要主动关闭SSE连接
-                    log.info("WebP结果格式未知，主动关闭SSE连接: {}", webPTaskId);
+                    log.debug("WebP结果格式未知，主动关闭SSE连接: {}", webPTaskId);
                     sendCloseMessage(webPTaskId, "ERROR_OCCURRED");
                     return 3; // 结果格式未知，关闭SSE连接
                 }
@@ -590,7 +600,7 @@ public class WebpProcessorClient {
                 CompletableFuture<WebpProcessResult> errorFuture = pendingFutures.remove(webPTaskId);
                 if (errorFuture != null) {
                     errorFuture.completeExceptionally(new ServiceException("WebP处理失败: " + errorMessage));
-                    log.info("WebP错误已通过CompletableFuture传递");
+                    log.debug("WebP错误已通过CompletableFuture传递");
                 } else {
                     log.warn("未找到对应的CompletableFuture: {}", webPTaskId);
                 }
@@ -599,7 +609,7 @@ public class WebpProcessorClient {
                 CompletableFuture<File> animationErrorFuture = pendingAnimationFutures.remove(webPTaskId);
                 if (animationErrorFuture != null) {
                     animationErrorFuture.completeExceptionally(new ServiceException("WebP动画创建失败: " + errorMessage));
-                    log.info("WebP动画创建错误已通过CompletableFuture传递");
+                    log.debug("WebP动画创建错误已通过CompletableFuture传递");
                 }
                 
                 // 更新进度为100%错误状态
@@ -608,7 +618,7 @@ public class WebpProcessorClient {
                 log.error("WebP处理失败: {}", errorMessage);
                 
                 // WebP错误时也要主动关闭SSE连接
-                log.info("WebP处理错误，主动关闭SSE连接: {}", webPTaskId);
+                log.debug("WebP处理错误，主动关闭SSE连接: {}", webPTaskId);
                 sendCloseMessage(webPTaskId, "ERROR_OCCURRED");
 
                 return 3; // 任务完成（失败），关闭连接
@@ -630,12 +640,12 @@ public class WebpProcessorClient {
             return;
         }
         
-        log.info("正在关闭任务{}的SSE连接", taskId);
+        log.debug("正在关闭任务{}的SSE连接", taskId);
         
         // 取消OkHttp调用
         Call call = taskCalls.get(taskId);
         if (call != null) {
-            log.info("关闭任务{}的SSE连接", taskId);
+            log.debug("关闭任务{}的SSE连接", taskId);
             call.cancel();
             taskCalls.remove(taskId);
         } else {
@@ -644,24 +654,30 @@ public class WebpProcessorClient {
         
         // 清除心跳计数
         if (heartbeatCounters.containsKey(taskId)) {
-            log.info("清除任务{}的心跳计数", taskId);
+            log.debug("清除任务{}的心跳计数", taskId);
             heartbeatCounters.remove(taskId);
+        }
+        
+        // 清除临时目录映射并删除临时目录
+        Path tempDir = progressTempDirMap.remove(taskId);
+        if (tempDir != null) {
+            CharArtProcessor.deleteTempDirectory(tempDir);
         }
         
         // 清理未完成的Future
         CompletableFuture<WebpProcessResult> pendingFuture = pendingFutures.remove(taskId);
         if (pendingFuture != null && !pendingFuture.isDone()) {
             pendingFuture.completeExceptionally(new ServiceException("SSE连接已关闭"));
-            log.info("已清理未完成的WebP处理Future: {}", taskId);
+            log.debug("已清理未完成的WebP处理Future: {}", taskId);
         }
         
         CompletableFuture<File> pendingAnimationFuture = pendingAnimationFutures.remove(taskId);
         if (pendingAnimationFuture != null && !pendingAnimationFuture.isDone()) {
             pendingAnimationFuture.completeExceptionally(new ServiceException("SSE连接已关闭"));
-            log.info("已清理未完成的WebP动画Future: {}", taskId);
+            log.debug("已清理未完成的WebP动画Future: {}", taskId);
         }
         
-        log.info("任务{}的SSE连接已完全关闭", taskId);
+        log.debug("任务{}的SSE连接已完全关闭", taskId);
     }
     
     /**
@@ -685,7 +701,7 @@ public class WebpProcessorClient {
             if ("ERROR_OCCURRED".equals(closeReason) || "HEARTBEAT_TIMEOUT".equals(closeReason)) {
                 log.warn("发送关闭消息到Flask服务器: {}, 原因: {}", taskId, closeReason);
             } else {
-                log.info("发送关闭消息到Flask服务器: {}, 原因: {}", taskId, closeReason);
+                log.debug("发送关闭消息到Flask服务器: {}, 原因: {}", taskId, closeReason);
             }
             
             // 创建POST请求到Flask服务器的关闭端点，包含关闭原因参数
@@ -699,7 +715,7 @@ public class WebpProcessorClient {
                 if ("ERROR_OCCURRED".equals(closeReason) || "HEARTBEAT_TIMEOUT".equals(closeReason)) {
                     log.warn("成功发送关闭消息到Flask服务器: {}, 原因: {}", taskId, closeReason);
                 } else {
-                    log.info("成功发送关闭消息到Flask服务器: {}, 原因: {}", taskId, closeReason);
+                    log.debug("成功发送关闭消息到Flask服务器: {}, 原因: {}", taskId, closeReason);
                 }
             } else {
                 log.warn("发送关闭消息到Flask服务器失败: {} {}", response.getStatus(), response.body());
@@ -731,10 +747,10 @@ public class WebpProcessorClient {
         CompletableFuture<WebpProcessResult> future = new CompletableFuture<>();
         
         try {
-            log.info("开始异步处理WebP文件: {}", webpFile.getAbsolutePath());
+            log.debug("开始异步处理WebP文件: {}", webpFile.getAbsolutePath());
 
             String webPTaskId = createProgressTask();
-            log.info("创建WebP任务的任务ID进行进度跟踪: {}", webPTaskId);
+            log.debug("创建WebP任务的任务ID进行进度跟踪: {}", webPTaskId);
             
             // 将Future存储到待完成映射中
             pendingFutures.put(webPTaskId, future);
@@ -760,7 +776,7 @@ public class WebpProcessorClient {
                                 .execute(stabilityLatch::countDown);
                         try {
                             if (stabilityLatch.await(1, TimeUnit.SECONDS)) {
-                                log.info("SSE连接已建立并稳定，准备发送HTTP请求");
+                                log.debug("SSE连接已建立并稳定，准备发送HTTP请求");
                             } else {
                                 log.warn("等待SSE连接稳定超时");
                             }
@@ -803,7 +819,7 @@ public class WebpProcessorClient {
             String message = asyncResponse.getString("message");
             String status = asyncResponse.getString("status");
             
-            log.info("WebP处理请求已提交: 任务ID={}, 消息={}, 状态={}", returnedTaskId, message, status);
+            log.debug("WebP处理请求已提交: 任务ID={}, 消息={}, 状态={}", returnedTaskId, message, status);
             
             // 验证返回的任务ID是否与发送的一致
             if (!webPTaskId.equals(returnedTaskId)) {
@@ -824,6 +840,19 @@ public class WebpProcessorClient {
             }
             log.error("处理WebP文件时发生错误", e);
             throw new ServiceException("处理WebP文件时发生错误: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 存储任务ID与临时目录的映射关系
+     *
+     * @param taskId  任务ID
+     * @param tempDir 临时目录路径
+     */
+    public void storeTempDirectory(String taskId, Path tempDir) {
+        if (taskId != null && tempDir != null) {
+            progressTempDirMap.put(taskId, tempDir);
+            log.debug("存储任务{}的临时目录: {}", taskId, tempDir);
         }
     }
     
@@ -864,7 +893,7 @@ public class WebpProcessorClient {
             JSONArray delaysArray = jsonResponse.getJSONArray("delays");
             JSONArray framesArray = jsonResponse.getJSONArray("frames");
             
-            log.info("WebP处理成功，共{}帧", frameCount);
+            log.debug("WebP处理成功，共{}帧", frameCount);
             
             // 提取延迟数组
             int[] delays = new int[frameCount];
@@ -899,7 +928,7 @@ public class WebpProcessorClient {
                 byte[] imageBytes = imageResponse.bodyBytes();
                 frames[i] = ImageIO.read(new ByteArrayInputStream(imageBytes));
                 
-                log.info("已获取第 {}/{} 帧图像", i+1, frameCount);
+                log.debug("已获取第 {}/{} 帧图像", i+1, frameCount);
             }
             
             // 更新最终进度
@@ -910,7 +939,7 @@ public class WebpProcessorClient {
             // 检查响应中是否包含任务ID
             if (jsonResponse.has("task_id")) {
                 String webPTaskId = jsonResponse.getString("task_id");
-                log.info("WebP处理任务ID: {}", webPTaskId);
+                log.debug("WebP处理任务ID: {}", webPTaskId);
                 return new WebpProcessResult(frameCount, delays, frames, oriTaskId, webPTaskId);
             }
             
@@ -940,9 +969,9 @@ public class WebpProcessorClient {
         CompletableFuture<File> future = new CompletableFuture<>();
         
         try {
-            log.info("开始异步从文件创建WebP动画，共{}帧", framePaths.length);
+            log.debug("开始异步从文件创建WebP动画，共{}帧", framePaths.length);
             String webPTaskId = createProgressTask();
-            log.info("创建WebP任务ID进行进度跟踪: {}", webPTaskId);
+            log.debug("创建WebP任务ID进行进度跟踪: {}", webPTaskId);
             
             // 将Future存储到待完成映射中
             pendingAnimationFutures.put(webPTaskId, future);
@@ -967,7 +996,7 @@ public class WebpProcessorClient {
                                 .execute(stabilityLatch::countDown);
                         try {
                             if (stabilityLatch.await(1, TimeUnit.SECONDS)) {
-                                log.info("SSE连接已建立起并稳定，准备发送HTTP请求");
+                                log.debug("SSE连接已建立起并稳定，准备发送HTTP请求");
                             } else {
                                 log.warn("等待SSE连接稳定时超时");
                             }
@@ -1016,7 +1045,7 @@ public class WebpProcessorClient {
             request.form("frame_format", frameFormatArray.toString());
             request.form("frame_paths", framePathsArray.toString());
             
-            log.info("已向Webp处理器发送创建WebP动画请求。任务ID {}", webPTaskId);
+            log.debug("已向Webp处理器发送创建WebP动画请求。任务ID {}", webPTaskId);
             HttpResponse response = executeWithRetry(request);
             
             if (response.getStatus() != HttpStatus.HTTP_OK) {
@@ -1032,14 +1061,14 @@ public class WebpProcessorClient {
             String message = asyncResponse.getString("message");
             String status = asyncResponse.getString("status");
             
-            log.info("WebP动画创建请求已提交: 任务ID={}, 消息={}, 状态={}", returnedTaskId, message, status);
+            log.debug("WebP动画创建请求已提交: 任务ID={}, 消息={}, 状态={}", returnedTaskId, message, status);
             
             // 验证返回的任务ID是否与发送的一致
             if (!webPTaskId.equals(returnedTaskId)) {
                 log.warn("返回的任务ID({})与发送的任务ID({})不一致", returnedTaskId, webPTaskId);
             }
             
-            log.info("WebP动画创建请求已提交，等待异步处理完成");
+            log.debug("WebP动画创建请求已提交，等待异步处理完成");
             
         } catch (Exception e) {
             log.error("异步创建WebP动画时发生错误", e);

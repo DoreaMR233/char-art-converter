@@ -9,16 +9,23 @@ import com.doreamr233.charartconverter.model.WebpProcessResult;
 import com.doreamr233.charartconverter.service.ProgressService;
 import com.madgag.gif.fmsware.AnimatedGifEncoder;
 import com.madgag.gif.fmsware.GifDecoder;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.coobird.thumbnailator.Thumbnails;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import cn.hutool.core.io.FileUtil;
+
+
+
 import javax.imageio.ImageIO;
+import javax.imageio.spi.IIORegistry;
+
+import com.luciad.imageio.webp.WebPImageReaderSpi;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -47,26 +54,33 @@ import static com.doreamr233.charartconverter.config.RedisConfig.CACHE_KEY_PREFI
  */
 @Slf4j
 public class CharArtProcessor {
-    
+
+    // 静态初始化块：注册WebP ImageReader
+    static {
+        try {
+            IIORegistry registry = IIORegistry.getDefaultInstance();
+            registry.registerServiceProvider(new WebPImageReaderSpi());
+            log.debug("WebP ImageReader 服务提供者已注册");
+        } catch (Exception e) {
+            log.warn("注册WebP ImageReader时出错: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * -- SETTER --
+     *  设置并行处理配置
+     *
+     */
+    @Setter
     private static ParallelProcessingConfig parallelConfig;
+    /**
+     * -- SETTER --
+     *  设置临时目录配置
+     *
+     */
+    @Setter
     private static TempDirectoryConfig tempDirectoryConfig;
-    
-    /**
-     * 设置并行处理配置
-     * @param config 并行处理配置
-     */
-    public static void setParallelConfig(ParallelProcessingConfig config) {
-        parallelConfig = config;
-    }
-    
-    /**
-     * 设置临时目录配置
-     * @param config 临时目录配置
-     */
-    public static void setTempDirectoryConfig(TempDirectoryConfig config) {
-        tempDirectoryConfig = config;
-    }
-    
+
     /**
      * 获取临时目录路径
      * @return 临时目录路径
@@ -104,7 +118,7 @@ public class CharArtProcessor {
      * @throws ServiceException 如果读取文件时发生错误
      */
     public static boolean isWebpAnimated(Path webpFile) {
-        try (InputStream is = Files.newInputStream(webpFile)) {
+        try (InputStream is = FileUtil.getInputStream(webpFile.toFile())) {
             byte[] buffer = new byte[100]; // 读取前100个字节，足够检查文件头
             if (is.read(buffer) > 0) {
                 String header = new String(buffer);
@@ -134,7 +148,7 @@ public class CharArtProcessor {
      * @return 处理后的图像字节数组
      * @throws ServiceException 如果处理过程中发生错误
      */
-    public static byte[] processStaticImage(byte[] imageBytes, String density, String colorMode, boolean limitSize, String progressId, ProgressService progressService, String filename, RedisTemplate<String, String> redisTemplate) {
+    public static byte[] processStaticImage(byte[] imageBytes, String density, String colorMode, boolean limitSize, String progressId, ProgressService progressService, String filename, RedisTemplate<String, String> redisTemplate, Path tempDir) {
         List<Path> tempFiles = new ArrayList<>();
 
         try {
@@ -143,11 +157,12 @@ public class CharArtProcessor {
             String imageType = detectImageType(imageBytes);
             log.debug("检测到图像类型: {}", imageType);
             
-            Path tempImagePath = saveInputStreamToTempFile(new ByteArrayInputStream(imageBytes), "original_", imageType);
+            Path tempImagePath = createTempFileInDirectory(tempDir, "original_", "." + imageType);
+            FileUtil.writeBytes(imageBytes, tempImagePath.toFile());
             tempFiles.add(tempImagePath);
-
             // 读取图像
             BufferedImage image = ImageIO.read(tempImagePath.toFile());
+
             if (image == null) {
                 throw new ServiceException("无法读取图像文件");
             }
@@ -165,7 +180,7 @@ public class CharArtProcessor {
             int densityLevel = getDensityLevel(density);
 
             // 转换为字符文本
-            String charText = convertImageToCharText(image, densityLevel, limitSize, progressId, totalPixels, 0, 1, 1, pregressStart,pregressEnd,"文本生成", progressService,true);
+            String charText = convertImageToCharText(image, densityLevel, limitSize, progressId, totalPixels, 0, 1, 1, pregressStart,pregressEnd,"文本生成", progressService,true, tempDir);
 
             // 将字符画文本存入Redis缓存
             if (redisTemplate != null && filename != null && !filename.isEmpty()) {
@@ -181,24 +196,23 @@ public class CharArtProcessor {
             pregressEnd = 80;
 
             // 生成字符画图片
-            Path charImagePath = createCharImageFile(charText, colorMode, image, progressId, 0, totalPixels, tempFiles,1,pregressStart, pregressEnd,"图像生成",progressService,true);
+            Path charImagePath = createCharImageFile(charText, colorMode, image, progressId, 0, totalPixels, tempFiles,1,pregressStart, pregressEnd,"图像生成",progressService,true, tempDir);
             tempFiles.add(charImagePath);
 
             // 更新进度
             progressService.updateProgress(progressId, 90, "字符画图片生成完成", "图像生成", totalPixels, totalPixels,false);
 
             // 读取生成的图片
-            byte[] resultBytes = Files.readAllBytes(charImagePath);
+            byte[] resultBytes = FileUtil.readBytes(charImagePath.toFile());
 
             // 更新进度
             progressService.updateProgress(progressId, 100, "处理完成", "完成", totalPixels, totalPixels,true);
 
             return resultBytes;
         } catch (IOException e) {
+            // 清理临时目录
+            deleteTempDirectory(tempDir);
             throw new ServiceException("处理静态图像失败: " + e.getMessage(), e);
-        } finally {
-            // 清理临时文件
-            cleanupTempFiles(tempFiles);
         }
     }
 
@@ -218,19 +232,20 @@ public class CharArtProcessor {
      * @return 处理后的GIF动画字节数组
      * @throws ServiceException 如果处理过程中发生错误
      */
-    public static byte[] processGif(byte[] imageBytes, String density, String colorMode, boolean limitSize, String progressId, ProgressService progressService) {
+    public static byte[] processGif(byte[] imageBytes, String density, String colorMode, boolean limitSize, String progressId, ProgressService progressService, Path tempDir) {
         List<Path> tempFiles = new ArrayList<>();
 
         try {
 
             // 将图像字节数组保存为临时文件
             // 对于GIF处理，我们知道文件类型是gif
-            Path tempImagePath = saveInputStreamToTempFile(new ByteArrayInputStream(imageBytes), "original_", "gif");
+            Path tempImagePath = createTempFileInDirectory(tempDir, "original_", ".gif");
+            FileUtil.writeBytes(imageBytes, tempImagePath.toFile());
             tempFiles.add(tempImagePath);
 
             // 使用GifDecoder解码GIF
             GifDecoder gifDecoder = new GifDecoder();
-            try (InputStream is = Files.newInputStream(tempImagePath)) {
+            try (InputStream is = FileUtil.getInputStream(tempImagePath.toFile())) {
                 int status = gifDecoder.read(is);
                 if (status != GifDecoder.STATUS_OK) {
                     throw new ServiceException("GIF解码失败，状态码: " + status);
@@ -264,7 +279,7 @@ public class CharArtProcessor {
 
             // 创建GIF编码器
             AnimatedGifEncoder gifEncoder = new AnimatedGifEncoder();
-            Path outputGifPath = createTempFile("output_", ".gif");
+            Path outputGifPath = createTempFileInDirectory(tempDir, "output_", ".gif");
             tempFiles.add(outputGifPath);
             gifEncoder.start(outputGifPath.toString());
             gifEncoder.setRepeat(0); // 0表示无限循环
@@ -275,7 +290,7 @@ public class CharArtProcessor {
             // 使用多线程并行处理帧
             processFramesInParallel(gifDecoder, frameCount, width, height, densityLevel, limitSize, 
                                   colorMode, progressId, totalPixels, tempFiles, delays, gifEncoder, 
-                                  pregressStart, pregressEnd, singlePregress, progressService);
+                                  pregressStart, pregressEnd, singlePregress, progressService, tempDir);
 
             // 完成GIF编码
             gifEncoder.finish();
@@ -284,17 +299,16 @@ public class CharArtProcessor {
             progressService.updateProgress(progressId, 90, "GIF编码完成", "GIF编码", totalPixels - 1, totalPixels,false);
 
             // 读取生成的GIF文件
-            byte[] resultBytes = Files.readAllBytes(outputGifPath);
+            byte[] resultBytes = FileUtil.readBytes(outputGifPath.toFile());
 
             // 更新进度
             progressService.updateProgress(progressId, 100, "处理完成", "完成", totalPixels, totalPixels,true);
 
             return resultBytes;
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // 清理临时目录
+            deleteTempDirectory(tempDir);
             throw new ServiceException("处理GIF动画图像失败: " + e.getMessage(), e);
-        } finally {
-            // 清理临时文件
-            cleanupTempFiles(tempFiles);
         }
     }
 
@@ -315,7 +329,7 @@ public class CharArtProcessor {
      * @return 处理后的WebP动画字节数组
      * @throws ServiceException 如果处理过程中发生错误
      */
-    public static byte[] processWebpAnimation(Path originalPath, String density, String colorMode, boolean limitSize, String progressId, ProgressService progressService, WebpProcessorClient webpProcessorClient) {
+    public static byte[] processWebpAnimation(Path originalPath, String density, String colorMode, boolean limitSize, String progressId, ProgressService progressService, WebpProcessorClient webpProcessorClient, Path tempDir) {
         List<Path> tempFiles = new ArrayList<>();
 
         try {
@@ -323,6 +337,10 @@ public class CharArtProcessor {
             if (!webpProcessorClient.isServiceAvailable()) {
                 throw new ServiceException("WebP处理服务不可用，请确保Python服务已启动");
             }
+            
+            // 存储临时目录信息到WebpProcessorClient
+            webpProcessorClient.storeTempDirectory(progressId, tempDir);
+            
             // 使用WebP处理服务解码WebP动画，传递任务ID用于进度跟踪
             WebpProcessResult webpResult = webpProcessorClient.processWebp(originalPath.toFile(), progressId);
             int frameCount = webpResult.getFrameCount();
@@ -352,7 +370,7 @@ public class CharArtProcessor {
             // 使用多线程处理WebP帧
             processWebpFramesInParallel(frames, frameCount, width, height, densityLevel, limitSize, 
                 colorMode, progressId, totalPixels, tempFiles, charFramePaths, 
-                pregressStart, pregressEnd, singlePregress, progressService);
+                pregressStart, pregressEnd, singlePregress, progressService, tempDir);
 
             // 使用WebP处理服务创建WebP动画
             progressService.updateProgress(progressId, 90, "创建WebP动画", "WebP编码", totalPixels - 1, totalPixels,false);
@@ -361,16 +379,15 @@ public class CharArtProcessor {
 
             // 读取生成的WebP文件
             tempFiles.add(webpOutputFile.toPath());
-            byte[] resultBytes = Files.readAllBytes(webpOutputFile.toPath());
+            byte[] resultBytes = FileUtil.readBytes(webpOutputFile);
 
             progressService.updateProgress(progressId, 100, "WebP处理完成", "完成", totalPixels, totalPixels,true);
 
             return resultBytes;
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // 清理临时目录
+            deleteTempDirectory(tempDir);
             throw new ServiceException("处理WebP动画失败: " + e.getMessage(), e);
-        } finally {
-            // 清理临时文件
-            cleanupTempFiles(tempFiles);
         }
     }
 
@@ -399,7 +416,7 @@ public class CharArtProcessor {
      */
     public static String convertImageToCharText(BufferedImage image, int densityLevel, boolean limitSize, String progressId, int totalPixels,
                                                 int pixelOffset, int nowFrame, int totalFrame, double pregressStart,double pregressEnd,
-                                                String stageName, ProgressService progressService,boolean isShowProgress) {
+                                                String stageName, ProgressService progressService,boolean isShowProgress, Path tempDir) {
         int width = image.getWidth();
         int height = image.getHeight();
 
@@ -428,7 +445,7 @@ public class CharArtProcessor {
         if (scale < 1.0) {
             try {
                 // 创建临时文件用于存储缩放后的图像
-                Path scaledImagePath = createTempFile("scaled_", ".png");
+                Path scaledImagePath = createTempFileInDirectory(tempDir, "scaled_", ".png");
 
                 // 使用Thumbnailator进行图像缩放并保存到临时文件
                 Thumbnails.of(image)
@@ -443,7 +460,7 @@ public class CharArtProcessor {
                 scaledHeight = scaledImage.getHeight();
 
                 // 删除临时文件
-                Files.deleteIfExists(scaledImagePath);
+                FileUtil.del(scaledImagePath.toFile());
             } catch (Exception e) {
                 log.warn("使用Thumbnailator缩放图像失败: {}", e.getMessage());
                 // 如果缩放失败，继续使用原始图像和计算的尺寸
@@ -526,7 +543,7 @@ public class CharArtProcessor {
      */
     public static Path createCharImageFile(String charText, String colorMode, BufferedImage originalImage, String progressId, int pixelOffset,
                                            int totalPixels, List<Path> tempFiles, int totalFrame, double pregressStart, double pregressEnd,
-                                           String stageName, ProgressService progressService,boolean isShowProgress) {
+                                           String stageName, ProgressService progressService,boolean isShowProgress, Path tempDir) {
         try{
             // 计算字体大小和图片尺寸
             String[] lines = charText.split("\n");
@@ -558,8 +575,8 @@ public class CharArtProcessor {
             int imageWidth = maxLineLength * charWidth;
             int imageHeight = lineCount * lineHeight;
 
-            // 创建临时文件用于存储图像
-            Path outputImagePath = createTempFile("char_image_", ".png");
+            // 创建输出图像文件
+            Path outputImagePath = createTempFileInDirectory(tempDir, "char_image_", ".png");
             tempFiles.add(outputImagePath);
 
             // 分块处理图像以减少内存使用
@@ -817,107 +834,97 @@ public class CharArtProcessor {
                 return 1;
         }
     }
-    
+
     /**
-     * 将InputStream保存为临时文件
+     * 创建基于文件名的临时目录
      * <p>
-     * 创建一个临时文件，并将输入流的内容写入该文件。
-     * 用于将上传的图片数据保存到文件系统，以便后续处理。
-     * 使用源文件的扩展名作为临时文件的扩展名，保持文件类型一致性。
+     * 在系统临时目录中创建一个以原始文件名（去除扩展名）为名称的子目录。
+     * 如果目录已存在则直接返回，确保同一文件的所有临时文件都在同一目录下。
      * </p>
      *
-     * @param inputStream 要保存的输入流
-     * @param prefix 临时文件名前缀
-     * @param extension 文件扩展名（不包含点号）
-     * @return 保存的临时文件路径
-     * @throws ServiceException 当文件创建或写入过程中发生错误时抛出
+     * @param originalFilename 原始文件名
+     * @return 创建的临时目录路径
+     * @throws ServiceException 当目录创建过程中发生错误时抛出
      */
-    public static Path saveInputStreamToTempFile(InputStream inputStream, String prefix, String extension) {
+    public static Path createTempDirectoryForFile(String originalFilename) {
         try {
-            // 确保扩展名格式正确（以点号开头）
-            String formattedExtension = extension.startsWith(".") ? extension : "." + extension;
-            
-            // 创建临时文件，使用源文件的扩展名
-            Path tempFile = createTempFile(prefix, formattedExtension);
-            
-            // 将输入流写入临时文件
-            try (OutputStream outputStream = Files.newOutputStream(tempFile)) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                }
+            // 从文件名中提取基础名称（去除扩展名和特殊字符）
+            String baseName = originalFilename;
+            if (baseName.contains(".")) {
+                baseName = baseName.substring(0, baseName.lastIndexOf("."));
             }
             
-            log.debug("已保存临时文件: {}, 扩展名: {}", tempFile, formattedExtension);
-            return tempFile;
-        } catch (IOException e) {
-            throw new ServiceException("保存临时文件失败: " + e.getMessage(), e);
+            // 清理文件名，移除不安全的字符
+            baseName = baseName.replaceAll("[^a-zA-Z0-9\u4e00-\u9fa5_-]", "_");
+            if (baseName.isEmpty()) {
+                baseName = "unknown";
+            }
+            
+            // 添加时间戳确保唯一性
+            String dirName = baseName + "_" + System.currentTimeMillis();
+            
+            // 创建临时目录
+            Path tempDir = Paths.get(getTempDir()).resolve(dirName);
+            if (!FileUtil.exist(tempDir.toFile())) {
+                FileUtil.mkdir(tempDir.toFile());
+                log.debug("已创建临时目录: {}", tempDir);
+            }
+            
+            return tempDir;
+        } catch (Exception e) {
+            throw new ServiceException("创建临时目录失败: " + e.getMessage(), e);
         }
     }
     
     /**
-     * 将BufferedImage保存为临时文件
+     * 在指定目录中创建临时文件
      * <p>
-     * 创建一个临时文件，并将BufferedImage对象写入该文件。
-     * 用于在处理过程中保存中间图像结果，如GIF的单帧或缩放后的图像。
-     * 使用指定的扩展名作为临时文件的扩展名，保持文件类型一致性。
-     * </p>
-     *
-     * @param image 要保存的BufferedImage对象
-     * @param prefix 临时文件名前缀
-     * @param extension 文件扩展名（不包含点号）
-     * @return 保存的临时文件路径
-     * @throws ServiceException 当文件创建或写入过程中发生错误时抛出
-     */
-    public static Path saveImageToTempFile(BufferedImage image, String prefix, String extension) {
-        try {
-            // 确保扩展名格式正确（以点号开头）
-            String formattedExtension = extension.startsWith(".") ? extension : "." + extension;
-            String formatName = extension.startsWith(".") ? extension.substring(1) : extension;
-            
-            // 创建临时文件
-            Path tempFile = createTempFile(prefix, formattedExtension);
-            
-            // 将图像写入临时文件
-            ImageIO.write(image, formatName, tempFile.toFile());
-            
-            log.debug("已保存图像到临时文件: {}, 扩展名: {}", tempFile, formattedExtension);
-            return tempFile;
-        } catch (IOException e) {
-            throw new ServiceException("保存图像到临时文件失败: " + e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * 创建临时文件
-     * <p>
-     * 在系统临时目录中创建一个带有指定前缀和后缀的临时文件。
+     * 在指定的目录中创建一个带有指定前缀和后缀的临时文件。
      * 文件名中包含UUID，确保唯一性，避免冲突。
-     * 保留原始文件的扩展名，确保文件类型的一致性。
      * </p>
      *
+     * @param tempDir 临时目录路径
      * @param prefix 临时文件名前缀
      * @param suffix 临时文件名后缀（包含点号）
      * @return 创建的临时文件路径
      * @throws ServiceException 当文件创建过程中发生错误时抛出
      */
-    public static Path createTempFile(String prefix, String suffix) {
+    public static Path createTempFileInDirectory(Path tempDir, String prefix, String suffix) {
         try {
             // 确保后缀以点号开头
             String formattedSuffix = suffix.startsWith(".") ? suffix : "." + suffix;
             
             // 创建临时文件，使用UUID确保唯一性
-            Path tempFile = Files.createTempFile(
-                Paths.get(getTempDir()), 
-                prefix + UUID.randomUUID(),
-                formattedSuffix
-            );
+            String fileName = prefix + UUID.randomUUID() + formattedSuffix;
+            Path tempFile = tempDir.resolve(fileName);
+            FileUtil.touch(tempFile.toFile());
             
-            log.debug("已创建临时文件: {}, 后缀: {}", tempFile, formattedSuffix);
+            log.debug("已在目录 {} 中创建临时文件: {}", tempDir, tempFile.getFileName());
             return tempFile;
-        } catch (IOException e) {
-            throw new ServiceException("创建临时文件失败: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new ServiceException("在指定目录中创建临时文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 删除临时目录及其所有内容
+     * <p>
+     * 递归删除指定的临时目录及其所有子文件和子目录。
+     * 用于清理转换完成后的临时文件。
+     * </p>
+     *
+     * @param tempDir 要删除的临时目录路径
+     */
+    public static void deleteTempDirectory(Path tempDir) {
+        if (tempDir == null || !FileUtil.exist(tempDir.toFile())) {
+            return;
+        }
+        
+        try {
+            FileUtil.del(tempDir.toFile());
+            log.debug("已删除临时目录: {}", tempDir);
+        } catch (Exception e) {
+            log.error("删除临时目录失败: {}", tempDir, e);
         }
     }
     
@@ -973,33 +980,6 @@ public class CharArtProcessor {
     }
 
     /**
-     * 清理临时文件
-     * <p>
-     * 删除处理过程中创建的所有临时文件。
-     * 通常在finally块中调用，确保无论处理成功还是失败，都能清理临时文件，
-     * 防止磁盘空间浪费。
-     * </p>
-     *
-     * @param tempFiles 要清理的临时文件路径列表
-     */
-    public static void cleanupTempFiles(List<Path> tempFiles) {
-        if (tempFiles == null || tempFiles.isEmpty()) {
-            return;
-        }
-
-        for (Path tempFile : tempFiles) {
-            try {
-                if (tempFile != null && Files.exists(tempFile)) {
-                    Files.delete(tempFile);
-                    log.debug("已删除临时文件: {}", tempFile);
-                }
-            } catch (IOException e) {
-                log.error("删除临时文件失败: {}, 错误: {}", tempFile, e.getMessage());
-            }
-        }
-    }
-
-    /**
      * 并行处理GIF帧并编码到GIF
      * 整合了帧处理和GIF编码功能，使用统一的线程池提高效率，减少线程中断风险
      */
@@ -1008,7 +988,7 @@ public class CharArtProcessor {
                                                 String progressId, int totalPixels, List<Path> tempFiles,
                                                 int[] delays, AnimatedGifEncoder gifEncoder,
                                                 double pregressStart, double pregressEnd, double singlePregress,
-                                                ProgressService progressService) {
+                                                ProgressService progressService, Path tempDir) {
         // 优化线程数配置，避免过多线程导致资源竞争
         int threadCount = parallelConfig != null ? 
             parallelConfig.calculateThreadCount(frameCount) : 
@@ -1036,7 +1016,8 @@ public class CharArtProcessor {
                         BufferedImage frame = gifDecoder.getFrame(frameIndex);
                         
                         // 保存原始帧到临时文件（用于彩色模式）
-                        Path framePath = saveImageToTempFile(frame, "frame_" + frameIndex + "_", "png");
+                        Path framePath = createTempFileInDirectory(tempDir, "frame_" + frameIndex + "_", ".png");
+                        ImageIO.write(frame, "png", framePath.toFile());
                         synchronized (tempFiles) {
                             tempFiles.add(framePath);
                         }
@@ -1051,7 +1032,7 @@ public class CharArtProcessor {
                         String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, 
                             totalPixels, framePixelOffset, frameIndex + 1, frameCount, currentProgress.get(), 
                             currentProgress.get() + progressPerStage, "文本生成：第" + (frameIndex + 1) + "帧/共" + frameCount + "帧", 
-                            progressService, false);
+                            progressService, false, tempDir);
                         
                         // 文本生成完成，更新进度
                         double newProgress = currentProgress.updateAndGet(current -> current + progressPerStage);
@@ -1063,7 +1044,7 @@ public class CharArtProcessor {
                         Path charFramePath = createCharImageFile(frameText, colorMode, frame, progressId, 
                             framePixelOffset, totalPixels, tempFiles, frameCount, currentProgress.get(), 
                             currentProgress.get() + progressPerStage, "图像生成：第" + (frameIndex + 1) + "帧/共" + frameCount + "帧", 
-                            progressService, false);
+                            progressService, false, tempDir);
                         
                         synchronized (tempFiles) {
                             tempFiles.add(charFramePath);
@@ -1170,7 +1151,7 @@ public class CharArtProcessor {
                                                     int densityLevel, boolean limitSize, String colorMode,
                                                     String progressId, int totalPixels, List<Path> tempFiles,
                                                     Path[] charFramePaths, double pregressStart, double pregressEnd,
-                                                    double singlePregress, ProgressService progressService) {
+                                                    double singlePregress, ProgressService progressService, Path tempDir) {
         // 优化线程数配置，避免过多线程导致资源竞争
         int threadCount = parallelConfig != null ? 
             parallelConfig.calculateThreadCount(frameCount) : 
@@ -1207,7 +1188,7 @@ public class CharArtProcessor {
                         String frameText = convertImageToCharText(frame, densityLevel, limitSize, progressId, 
                             totalPixels, framePixelOffset, frameIndex + 1, frameCount, currentProgress.get(), 
                             currentProgress.get() + progressPerStage, "文本生成：第" + (frameIndex + 1) + "帧/共" + frameCount + "帧", 
-                            progressService, false);
+                            progressService, false, tempDir);
                         
                         // 文本生成完成，更新进度
                         double newProgress = currentProgress.updateAndGet(current -> current + progressPerStage);
@@ -1219,7 +1200,7 @@ public class CharArtProcessor {
                         Path charFramePath = createCharImageFile(frameText, colorMode, frame, progressId, 
                             framePixelOffset, totalPixels, tempFiles, frameCount, currentProgress.get(), 
                             currentProgress.get() + progressPerStage, "图像生成：第" + (frameIndex + 1) + "帧/共" + frameCount + "帧", 
-                            progressService, false);
+                            progressService, false, tempDir);
                         
                         synchronized (tempFiles) {
                             tempFiles.add(charFramePath);

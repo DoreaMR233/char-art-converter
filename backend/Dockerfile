@@ -32,7 +32,7 @@ RUN mvn package -DskipTests
 FROM openjdk:11-jre-slim
 
 # 安装netcat用于检查Redis连接以及字体相关依赖，安装tzdata用于时区设置
-RUN apt-get update && apt-get install -y netcat fontconfig libfreetype6 tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y netcat fontconfig libfreetype6 tzdata libwebp-dev && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app

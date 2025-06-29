@@ -13,11 +13,9 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.nio.file.Files;
+import cn.hutool.core.io.FileUtil;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -72,8 +70,7 @@ public class CharArtServiceImpl implements CharArtService {
      * @return 转换后的字符画图片字节数组
      */
     @Override
-    public byte[] convertToCharArt(InputStream imageStream, String filename, String density, String colorMode, String progressId, boolean limitSize) {
-        List<Path> tempFiles = new ArrayList<>();
+    public byte[] convertToCharArt(InputStream imageStream, String filename, String density, String colorMode, String progressId, boolean limitSize, Path tempDir) {
         try {
             // 判断图片类型
             boolean isGif = filename != null && filename.toLowerCase().endsWith(".gif");
@@ -89,17 +86,17 @@ public class CharArtServiceImpl implements CharArtService {
                     extension = filename.substring(filename.lastIndexOf(".") + 1);
                 }
                 
-                // 保存输入流到临时文件，以便检查是否为动图
-                log.info("使用文件扩展名: {}", extension);
-                tempWebpPath = CharArtProcessor.saveInputStreamToTempFile(imageStream, "check_webp_", extension);
-                tempFiles.add(tempWebpPath);
+                // 保存输入流到专用临时目录中的临时文件，以便检查是否为动图
+                log.debug("使用文件扩展名: {}", extension);
+                tempWebpPath = CharArtProcessor.createTempFileInDirectory(tempDir, "check_webp_", "." + extension);
+                FileUtil.writeFromStream(imageStream, tempWebpPath.toFile());
                 
                 // 检查webp是否为动图
                 isAnimated = CharArtProcessor.isWebpAnimated(tempWebpPath);
-                log.info("WebP图片是否为动图: {}", isAnimated);
+                log.debug("WebP图片是否为动图: {}", isAnimated);
                 
                 // 重新获取文件输入流，因为之前的输入流已经被读取
-                imageStream = Files.newInputStream(tempWebpPath);
+                imageStream = FileUtil.getInputStream(tempWebpPath.toFile());
             }
             
             // 更新进度
@@ -115,21 +112,20 @@ public class CharArtServiceImpl implements CharArtService {
             byte[] imageBytes = baos.toByteArray();
             
             if (isGif) {
-                log.info("处理GIF：{}", filename);
-                return CharArtProcessor.processGif(imageBytes, density, colorMode, limitSize, progressId, progressService);
+                log.debug("处理GIF：{}", filename);
+                return CharArtProcessor.processGif(imageBytes, density, colorMode, limitSize, progressId, progressService, tempDir);
             } else if (isWebp && isAnimated) {
-                log.info("处理WebP动图：{}", filename);
-                return CharArtProcessor.processWebpAnimation(tempWebpPath, density, colorMode, limitSize, progressId, progressService, webpProcessorClient);
+                log.debug("处理WebP动图：{}", filename);
+                return CharArtProcessor.processWebpAnimation(tempWebpPath, density, colorMode, limitSize, progressId, progressService, webpProcessorClient, tempDir);
             } else {
-                log.info("处理静态图片：{}", filename);
-                return CharArtProcessor.processStaticImage(imageBytes, density, colorMode, limitSize, progressId, progressService, filename, redisTemplate);
+                log.debug("处理静态图片：{}", filename);
+                return CharArtProcessor.processStaticImage(imageBytes, density, colorMode, limitSize, progressId, progressService, filename, redisTemplate, tempDir);
             }
         } catch (Exception e) {
             log.error("转换字符画失败", e);
-            throw new ServiceException("转换字符画失败: " + e.getMessage(), e);
-        } finally {
             // 清理所有临时文件
-            CharArtProcessor.cleanupTempFiles(tempFiles);
+            CharArtProcessor.deleteTempDirectory(tempDir);
+            throw new ServiceException("转换字符画失败: " + e.getMessage(), e);
         }
     }
 

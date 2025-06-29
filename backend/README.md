@@ -322,101 +322,64 @@ Docker部署提供了更简便的部署方式，包含了所有必要的依赖�
 
 ### 配置文件说明
 
-主要配置项在 `application.properties` 文件中，以下是各配置项的详细说明：
+本项目使用 `application.properties.template` 作为配置模板文件。
 
-#### 服务器配置
+#### 首次使用步骤
 
-```properties
-# 服务器端口
-server.port=8080
-```
+1. 复制模板文件：
+   ```bash
+   cp application.properties.template application.properties
+   ```
 
-#### 文件上传配置
+2. 根据你的环境修改 `application.properties` 中的配置项
 
-```properties
-# 单个文件最大大小
-spring.servlet.multipart.max-file-size=10MB
-# 请求最大大小
-spring.servlet.multipart.max-request-size=10MB
-```
+#### 重要说明
 
-#### 日志配置
+- `application.properties` 文件已被添加到 `.gitignore` 中，不会被提交到版本控制
+- 请不要直接修改 `application.properties.template` 文件，除非需要更新默认配置
+- 如果需要添加新的配置项，请同时更新模板文件
 
-```properties
-# 日志级别
-logging.level.com.doreamr233.charartconverter=INFO
-# 日志文件路径
-logging.file.name=/app/logs/char-art-converter.log
-# 日志文件最大大小
-logging.logback.rollingpolicy.max-file-size=10MB
-# 日志文件保留天数
-logging.logback.rollingpolicy.max-history=30
-# 日志时间格式
-logging.pattern.dateformat=yyyy-MM-dd HH:mm:ss.SSS
-# 文件编码
-logging.charset.console=UTF-8
-logging.charset.file=UTF-8
-```
+#### 配置参数说明
 
-#### 时区配置
-
-```properties
-# Jackson时区设置
-spring.jackson.time-zone=Asia/Shanghai
-# 日期时间格式
-spring.mvc.format.date-time=yyyy-MM-dd HH:mm:ss
-```
-
-#### 字符画转换配置
-
-```properties
-# 默认字符密度（low/medium/high）
-char-art.default-density=medium
-# 默认颜色模式（color/grayscale）
-char-art.default-color-mode=grayscale
-```
-
-#### 临时文件配置
-
-```properties
-# 临时文件目录
-char-art.temp-directory=/app/data
-```
-
-#### Redis配置
-
-```properties
-# Redis主机地址
-spring.redis.host=localhost
-# Redis端口
-spring.redis.port=6379
-# Redis数据库索引
-spring.redis.database=0
-# Redis连接超时时间（毫秒）
-spring.redis.timeout=60000
-```
-
-#### 字符画缓存配置
-
-```properties
-# 缓存过期时间（秒）
-char-art.cache.ttl=3600
-# 缓存键前缀
-char-art.cache.default_key_prefix=char-art:text:
-```
-
-#### WebP处理服务配置
-
-```properties
-# WebP处理服务URL
-webp-processor.url=http://localhost:8081
-# 是否启用WebP处理服务
-webp-processor.enabled=true
-# 连接超时时间（毫秒）
-webp-processor.connection-timeout=600000
-# 最大重试次数
-webp-processor.max-retries=2
-```
+| 变量名称 | 变量中文名 | 变量作用 | 变量默认值 |
+|---------|-----------|----------|----------|
+| server.port | 服务器端口 | 设置应用服务器监听端口 | 8080 |
+| spring.servlet.multipart.max-file-size | 单个文件最大大小 | 限制上传单个文件的最大大小 | 10MB |
+| spring.servlet.multipart.max-request-size | 请求最大大小 | 限制整个请求的最大大小 | 10MB |
+| spring.servlet.multipart.location | 文件上传临时目录 | 指定multipart文件的临时存储位置 | /app/temp |
+| logging.level.com.doreamr233.charartconverter | 应用日志级别 | 设置应用程序的日志输出级别 | DEBUG |
+| logging.file.name | 日志文件路径 | 指定日志文件的存储路径 | /app/logs/char-art-converter.log |
+| logging.logback.rollingpolicy.max-file-size | 日志文件最大大小 | 单个日志文件的最大大小 | 10MB |
+| logging.logback.rollingpolicy.max-history | 日志文件保留天数 | 日志文件的最大保留数量 | 30 |
+| logging.pattern.dateformat | 日志时间格式 | 日志中时间戳的格式 | yyyy-MM-dd HH:mm:ss.SSS |
+| logging.charset.console | 控制台日志编码 | 控制台输出日志的字符编码 | UTF-8 |
+| logging.charset.file | 文件日志编码 | 日志文件的字符编码 | UTF-8 |
+| spring.jackson.time-zone | Jackson时区设置 | JSON序列化时的时区设置 | Asia/Shanghai |
+| spring.mvc.format.date-time | 日期时间格式 | MVC层日期时间的格式化模式 | yyyy-MM-dd HH:mm:ss |
+| char-art.default-density | 默认字符密度 | 字符画转换的默认密度设置 | medium |
+| char-art.default-color-mode | 默认颜色模式 | 字符画转换的默认颜色模式 | grayscale |
+| char-art.temp-directory | 字符画临时目录 | 字符画处理过程中的临时文件存储目录 | /app/temp |
+| java.io.tmpdir | Java系统临时目录 | Java系统级临时文件目录 | /app/temp |
+| char-art.temp-file.max-retention-hours | 临时文件最大保留时间 | 临时文件的最大保留时间（小时） | 24 |
+| char-art.temp-file.cleanup-enabled | 临时文件清理开关 | 是否启用临时文件自动清理 | true |
+| spring.redis.host | Redis主机地址 | Redis服务器的主机地址 | localhost |
+| spring.redis.port | Redis端口 | Redis服务器的端口号 | 6379 |
+| spring.redis.database | Redis数据库索引 | 使用的Redis数据库索引 | 0 |
+| spring.redis.password | Redis密码 | Redis服务器的连接密码 | （空） |
+| spring.redis.timeout | Redis连接超时时间 | Redis连接的超时时间（毫秒） | 60000 |
+| char-art.cache.ttl | 缓存过期时间 | 字符画缓存的生存时间（秒） | 3600 |
+| char-art.cache.default_key_prefix | 缓存键前缀 | 字符画缓存键的默认前缀 | char-art:text: |
+| webp-processor.url | WebP处理服务URL | WebP处理服务的访问地址 | http://localhost:8081 |
+| webp-processor.enabled | WebP处理服务开关 | 是否启用WebP处理服务 | true |
+| webp-processor.connection-timeout | WebP服务连接超时 | WebP服务的连接超时时间（毫秒） | 600000 |
+| webp-processor.max-retries | WebP服务最大重试次数 | WebP服务调用失败时的最大重试次数 | 2 |
+| char-art.parallel.max-frame-threads | 最大并行帧数 | 同时处理的帧数上限 | 4 |
+| char-art.parallel.thread-pool-factor | 线程池大小因子 | 线程池大小计算因子（CPU核心数的倍数） | 0.5 |
+| char-art.parallel.min-threads | 最小线程数 | 线程池的最小线程数 | 1 |
+| char-art.parallel.progress-update-interval | 进度更新间隔 | 进度更新的时间间隔（毫秒） | 500 |
+| char-art.parallel.pixel-progress-interval | 像素进度报告间隔 | 像素处理进度报告间隔 | 1000 |
+| char-art.parallel.task-timeout | 任务执行超时时间 | 单个任务的最大执行时间（毫秒） | 60000 |
+| char-art.parallel.progress-cleanup-delay | 进度清理延迟 | 进度监听器清理的延迟时间（毫秒） | 60000 |
 
 ## 许可证
 

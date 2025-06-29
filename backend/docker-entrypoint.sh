@@ -100,6 +100,11 @@ if [ ! -z "$MAX_REQUEST_SIZE" ]; then
   sed -i "s|spring.servlet.multipart.max-request-size=.*|spring.servlet.multipart.max-request-size=$MAX_REQUEST_SIZE|g" "$CONFIG_FILE"
 fi
 
+# 自定义multipart临时文件位置配置
+if [ ! -z "$DEFAULT_TEMP_PATH" ]; then
+  sed -i "s|spring.servlet.multipart.location=.*|spring.servlet.multipart.location=$DEFAULT_TEMP_PATH|g" "$CONFIG_FILE"
+fi
+
 # 自定义日志级别
 if [ ! -z "$LOG_LEVEL" ]; then
   sed -i "s|logging.level.com.doreamr233.charartconverter=.*|logging.level.com.doreamr233.charartconverter=$LOG_LEVEL|g" "$CONFIG_FILE"
@@ -176,6 +181,20 @@ fi
 
 if [ ! -z "$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY" ]; then
   sed -i "s|char-art.parallel.progress-cleanup-delay=.*|char-art.parallel.progress-cleanup-delay=$CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY|g" "$CONFIG_FILE"
+fi
+
+# 自定义临时文件清理配置
+if [ ! -z "$CHAR_ART_TEMP_FILE_MAX_RETENTION_HOURS" ]; then
+  sed -i "s|char-art.temp-file.max-retention-hours=.*|char-art.temp-file.max-retention-hours=$CHAR_ART_TEMP_FILE_MAX_RETENTION_HOURS|g" "$CONFIG_FILE"
+fi
+
+if [ ! -z "$CHAR_ART_TEMP_FILE_CLEANUP_ENABLED" ]; then
+  sed -i "s|char-art.temp-file.cleanup-enabled=.*|char-art.temp-file.cleanup-enabled=$CHAR_ART_TEMP_FILE_CLEANUP_ENABLED|g" "$CONFIG_FILE"
+fi
+
+# 自定义Java系统临时目录配置
+if [ ! -z "$DEFAULT_TEMP_PATH" ]; then
+  sed -i "s|java.io.tmpdir=.*|java.io.tmpdir=$DEFAULT_TEMP_PATH|g" "$CONFIG_FILE"
 fi
 
 

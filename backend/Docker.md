@@ -18,7 +18,7 @@
     - [运行容器](#运行容器)
     - [验证Docker Run服务状态](#验证docker-run服务状态)
   - [配置参数](#配置参数)
-    - [配置文件变量](#配置文件变量)
+    - [配置变量列表](#配置变量列表)
       - [使用示例](#使用示例)
     - [卷](#卷)
       - [卷使用示例](#卷使用示例)
@@ -151,48 +151,68 @@ curl http://localhost:8080/api/health
 
 ## 配置参数
 
-### 配置文件变量
+### 配置变量列表
 
 以下是可通过环境变量配置的参数列表：
 
-| 变量名称                                | 变量中文名      | 变量作用                 | 变量默认值                   |
-|-------------------------------------|------------|----------------------|-------------------------|
-| `SERVER_PORT`                       | 服务器端口      | 设置Spring Boot应用的监听端口 | `8080`                  |
-| `REDIS_HOST`                        | Redis主机地址  | Redis服务器的主机名或IP地址    | `localhost`             |
-| `REDIS_PORT`                        | Redis端口    | Redis服务器的端口号         | `6379`                  |
-| `REDIS_DATABASE`                    | Redis数据库索引 | 使用的Redis数据库索引        | `0`                     |
-| `REDIS_PASSWORD`                    | Redis密码    | Redis服务器的认证密码       | 空字符串                  |
-| `REDIS_TIMEOUT`                     | Redis连接超时  | Redis连接超时时间（毫秒）      | `60000`                 |
-| `CHAR_ART_CACHE_TTL`                | 缓存过期时间     | 字符画缓存的生存时间（秒）        | `3600`                  |
-| `CHAR_ART_CACHE_DEFAULT_KEY_PREFIX` | 缓存键前缀      | 字符画缓存键的默认前缀          | `char-art:text:`        |
-| `WEBP_PROCESSOR_URL`                | WebP处理服务地址 | WebP处理服务的URL地址       | `http://localhost:8081` |
-| `WEBP_PROCESSOR_ENABLED`            | WebP处理服务开关 | 是否启用WebP处理服务         | `true`                  |
-| `WEBP_PROCESSOR_CONNECTION_TIMEOUT` | WebP连接超时   | WebP处理服务连接超时时间（毫秒）   | `600000`                |
-| `WEBP_PROCESSOR_MAX_RETRIES`        | WebP最大重试次数 | WebP处理服务的最大重试次数      | `2`                     |
-| `MAX_FILE_SIZE`                     | 最大文件大小     | 上传文件的最大大小限制          | `10MB`                  |
-| `MAX_REQUEST_SIZE`                  | 最大请求大小     | HTTP请求的最大大小限制        | `10MB`                  |
-| `LOG_LEVEL`                         | 日志级别       | 应用程序的日志输出级别          | `INFO`                  |
-| `LOG_FILE_MAX_SIZE`                 | 日志文件最大大小   | 单个日志文件的最大大小          | `10MB`                  |
-| `LOG_FILE_MAX_HISTORY`              | 日志文件保留数量   | 保留的历史日志文件数量          | `30`                    |
-| `LOG_CHARSET_CONSOLE`               | 控制台日志字符集   | 控制台输出日志的字符编码         | `UTF-8`                 |
-| `LOG_CHARSET_FILE`                  | 文件日志字符集    | 日志文件的字符编码            | `UTF-8`                 |
-| `TIMEZONE`                          | 应用时区       | 应用程序使用的时区设置          | `Asia/Shanghai`         |
-| `DATETIME_FORMAT`                   | 日期时间格式     | 日期时间的显示格式            | `yyyy-MM-dd HH:mm:ss`   |
-| `DEFAULT_DENSITY`                   | 默认字符密度     | 字符画转换的默认字符密度         | `medium`                |
-| `DEFAULT_COLOR_MODE`                | 默认颜色模式     | 字符画转换的默认颜色模式         | `grayscale`             |
-| `DEFAULT_CONFIG_PATH`               | 默认配置路径     | 应用配置文件的默认路径          | `/app/config`           |
-| `DEFAULT_TEMP_PATH`                 | 默认临时文件路径   | 临时文件存储的默认路径          | `/app/data`             |
-| `char-art.temp-directory`           | 字符画临时目录    | 字符画处理时的临时文件目录        | `./temp`                |
-| `LOG_FILE_PATH`                     | 日志文件路径     | 日志文件存储的路径            | `/app/logs`             |
-| `CHAR_ART_PARALLEL_MAX_FRAME_THREADS` | 最大并行帧数     | 同时处理的帧数上限            | `4`                     |
-| `CHAR_ART_PARALLEL_THREAD_POOL_FACTOR` | 线程池大小计算因子  | CPU核心数的倍数             | `0.5`                   |
-| `CHAR_ART_PARALLEL_MIN_THREADS`     | 最小线程数      | 线程池的最小线程数            | `1`                     |
-| `CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL` | 进度更新间隔     | 进度更新的时间间隔（毫秒）        | `500`                   |
-| `CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL` | 像素处理进度报告间隔 | 每处理多少像素报告一次进度        | `1000`                  |
-| `CHAR_ART_PARALLEL_TASK_TIMEOUT`    | 任务执行超时时间   | 任务执行的超时时间（毫秒）        | `60000`                 |
-| `CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY` | 进度监听器清理延迟  | 进度监听器清理的延迟时间（毫秒）     | `60000`                 |
+| 环境变量名称                                         | 环境变量中文名         | 环境变量作用                 | 环境变量默认值                   | 环境变量对应配置文件参数                                |
+|----------------------------------------------|---------------|----------------------|-------------------------|-----------------------------------------------|
+| `SERVER_PORT`                                | 服务器端口         | 设置Spring Boot应用的监听端口 | `8080`                  | `server.port`                             |
+| `REDIS_HOST`                                 | Redis主机地址     | Redis服务器的主机名或IP地址    | `localhost`             | `spring.redis.host`                       |
+| `REDIS_PORT`                                 | Redis端口       | Redis服务器的端口号         | `6379`                  | `spring.redis.port`                       |
+| `REDIS_DATABASE`                             | Redis数据库索引    | 使用的Redis数据库索引        | `0`                     | `spring.redis.database`                   |
+| `REDIS_PASSWORD`                             | Redis密码       | Redis服务器的认证密码        | 空字符串                    | `spring.redis.password`                   |
+| `REDIS_TIMEOUT`                              | Redis连接超时     | Redis连接超时时间（毫秒）      | `60000`                 | `spring.redis.timeout`                    |
+| `CHAR_ART_CACHE_TTL`                         | 缓存过期时间        | 字符画缓存的生存时间（秒）        | `3600`                  | `char-art.cache.ttl`                      |
+| `CHAR_ART_CACHE_DEFAULT_KEY_PREFIX`          | 缓存键前缀         | 字符画缓存键的默认前缀          | `char-art:text:`        | `char-art.cache.default_key_prefix`       |
+| `WEBP_PROCESSOR_URL`                         | WebP处理服务地址    | WebP处理服务的URL地址       | `http://localhost:8081` | `webp-processor.url`                      |
+| `WEBP_PROCESSOR_ENABLED`                     | WebP处理服务开关    | 是否启用WebP处理服务         | `true`                  | `webp-processor.enabled`                  |
+| `WEBP_PROCESSOR_CONNECTION_TIMEOUT`          | WebP连接超时      | WebP处理服务连接超时时间（毫秒）   | `600000`                | `webp-processor.connection-timeout`       |
+| `WEBP_PROCESSOR_MAX_RETRIES`                 | WebP最大重试次数    | WebP处理服务的最大重试次数      | `2`                     | `webp-processor.max-retries`              |
+| `MAX_FILE_SIZE`                              | 最大文件大小        | 上传文件的最大大小限制          | `10MB`                  | `spring.servlet.multipart.max-file-size`  |
+| `MAX_REQUEST_SIZE`                           | 最大请求大小        | HTTP请求的最大大小限制        | `10MB`                  | `spring.servlet.multipart.max-request-size` |
+| `DEFAULT_TEMP_PATH`                          | 默认临时文件路径      | 临时文件存储的默认路径          | `/app/temp`             | `spring.servlet.multipart.location`, `char-art.temp-directory`, `java.io.tmpdir` |
+| `LOG_LEVEL`                                  | 日志级别          | 应用程序的日志输出级别          | `INFO`                 | `logging.level.com.doreamr233.charartconverter` |
+| `LOG_FILE_PATH`                              | 日志文件路径        | 日志文件存储的路径            | `/app/logs`             | `logging.file.name`                       |
+| `LOG_FILE_MAX_SIZE`                          | 日志文件最大大小      | 单个日志文件的最大大小          | `10MB`                  | `logging.logback.rollingpolicy.max-file-size` |
+| `LOG_FILE_MAX_HISTORY`                       | 日志文件保留数量      | 保留的历史日志文件数量          | `30`                    | `logging.logback.rollingpolicy.max-history` |
+| `LOG_CHARSET_CONSOLE`                        | 控制台日志字符集      | 控制台输出日志的字符编码         | `UTF-8`                 | `logging.charset.console`                 |
+| `LOG_CHARSET_FILE`                           | 文件日志字符集       | 日志文件的字符编码            | `UTF-8`                 | `logging.charset.file`                    |
+| `TIMEZONE`                                   | 应用时区          | 应用程序使用的时区设置          | `Asia/Shanghai`         | `spring.jackson.time-zone`                |
+| `DATETIME_FORMAT`                            | 日期时间格式        | 日期时间的显示格式            | `yyyy-MM-dd HH:mm:ss`   | `spring.mvc.format.date-time`             |
+| `DEFAULT_DENSITY`                            | 默认字符密度        | 字符画转换的默认字符密度         | `medium`                | `char-art.default-density`                |
+| `DEFAULT_COLOR_MODE`                         | 默认颜色模式        | 字符画转换的默认颜色模式         | `grayscale`             | `char-art.default-color-mode`             |
+| `DEFAULT_CONFIG_PATH`                        | 默认配置路径        | 应用配置文件的默认路径          | `/app/config`           | 配置文件存储路径（非配置参数）                         |
+| `CHAR_ART_PARALLEL_MAX_FRAME_THREADS`        | 最大并行帧数        | 同时处理的帧数上限            | `4`                     | `char-art.parallel.max-frame-threads`     |
+| `CHAR_ART_PARALLEL_THREAD_POOL_FACTOR`       | 线程池大小计算因子     | CPU核心数的倍数            | `0.5`                   | `char-art.parallel.thread-pool-factor`    |
+| `CHAR_ART_PARALLEL_MIN_THREADS`              | 最小线程数         | 线程池的最小线程数            | `1`                     | `char-art.parallel.min-threads`           |
+| `CHAR_ART_PARALLEL_PROGRESS_UPDATE_INTERVAL` | 进度更新间隔        | 进度更新的时间间隔（毫秒）        | `500`                   | `char-art.parallel.progress-update-interval` |
+| `CHAR_ART_PARALLEL_PIXEL_PROGRESS_INTERVAL`  | 像素处理进度报告间隔    | 每处理多少像素报告一次进度        | `1000`                  | `char-art.parallel.pixel-progress-interval` |
+| `CHAR_ART_PARALLEL_TASK_TIMEOUT`             | 任务执行超时时间      | 任务执行的超时时间（毫秒）        | `60000`                 | `char-art.parallel.task-timeout`          |
+| `CHAR_ART_PARALLEL_PROGRESS_CLEANUP_DELAY`   | 进度监听器清理延迟     | 进度监听器清理的延迟时间（毫秒）     | `60000`                 | `char-art.parallel.progress-cleanup-delay` |
+| `CHAR_ART_TEMP_FILE_MAX_RETENTION_HOURS`     | 临时文件最大保留时间    | 临时文件的最大保留时间（小时）      | `24`                    | `char-art.temp-file.max-retention-hours`  |
+| `CHAR_ART_TEMP_FILE_CLEANUP_ENABLED`         | 临时文件清理开关      | 是否启用临时文件清理功能         | `true`                  | `char-art.temp-file.cleanup-enabled`      |
 
 #### 使用示例
+
+**Docker Compose 配置示例：**
+
+```yaml
+services:
+  char-art-backend:
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=your_redis_password
+      - LOG_LEVEL=DEBUG
+      - MAX_FILE_SIZE=20MB
+      - WEBP_PROCESSOR_URL=http://webp-processor:5000
+      - CHAR_ART_PARALLEL_ENABLED=true
+      - CHAR_ART_PARALLEL_CORE_POOL_SIZE=4
+      - CHAR_ART_PARALLEL_MAX_POOL_SIZE=8
+```
+
+**Docker Run 配置示例：**
 
 ```bash
 # 使用自定义配置运行容器
@@ -219,23 +239,43 @@ docker run -d --name char-art-backend \
 
 #### 卷使用示例
 
-```bash
-# 创建命名卷
-docker volume create char-art-data
-docker volume create char-art-logs
+**Docker Compose 卷配置：**
 
-# 使用命名卷运行容器
+```yaml
+services:
+  char-art-backend:
+    volumes:
+      - char-art-data:/app/data
+      - char-art-logs:/app/logs
+      - char-art-config:/app/config
+      - ./config:/app/config:ro  # 只读配置文件
+
+volumes:
+  char-art-data:
+    driver: local
+  char-art-logs:
+    driver: local
+  char-art-config:
+    driver: local
+```
+
+**Docker Run 卷配置：**
+
+```bash
+# 使用命名卷
 docker run -d --name char-art-backend \
   -p 8080:8080 \
   -v char-art-data:/app/data \
   -v char-art-logs:/app/logs \
+  -v char-art-config:/app/config \
   char-art-backend:latest
 
-# 使用主机目录挂载
+# 使用绑定挂载
 docker run -d --name char-art-backend \
   -p 8080:8080 \
   -v /host/path/data:/app/data \
   -v /host/path/logs:/app/logs \
+  -v /host/path/config:/app/config \
   char-art-backend:latest
 ```
 
@@ -251,24 +291,46 @@ docker run -d --name char-art-backend \
 
 #### 网络使用示例
 
+**Docker Compose 网络配置：**
+
+```yaml
+services:
+  char-art-backend:
+    networks:
+      - char-art-network
+      - external-network
+
+networks:
+  char-art-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  external-network:
+    external: true
+```
+
+**Docker Run 网络配置：**
+
 ```bash
 # 创建自定义网络
-docker network create char-art-network
+docker network create --driver bridge \
+  --subnet=172.20.0.0/16 \
+  char-art-network
 
 # 在自定义网络中运行Redis
 docker run -d --name redis \
   --network char-art-network \
+  --ip 172.20.0.2 \
   redis:6.2-alpine
 
 # 在同一网络中运行后端服务
 docker run -d --name char-art-backend \
   --network char-art-network \
+  --ip 172.20.0.10 \
   -p 8080:8080 \
   -e REDIS_HOST=redis \
   char-art-backend:latest
-
-# 查看网络信息
-docker network inspect char-art-network
 ```
 
 ## 与其他服务集成

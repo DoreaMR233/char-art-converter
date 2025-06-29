@@ -58,12 +58,12 @@ public class SseProgressListener implements ProgressListener {
         
         // 设置SSE发射器的回调
         emitter.onCompletion(() -> {
-            log.info("SSE连接完成: {}", progressId);
+            log.debug("SSE连接完成: {}", progressId);
             this.active = false;
         });
         
         emitter.onTimeout(() -> {
-            log.info("SSE连接超时: {}", progressId);
+            log.debug("SSE连接超时: {}", progressId);
             this.active = false;
         });
         

@@ -10,13 +10,14 @@ import com.doreamr233.charartconverter.model.ProgressInfo;
 import com.doreamr233.charartconverter.service.ProgressService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * 进度服务实现类
@@ -34,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Slf4j
 public class ProgressServiceImpl implements ProgressService {
     
-    @Autowired
+    @Resource
     private ParallelProcessingConfig parallelConfig;
 
     /**
@@ -54,6 +55,12 @@ public class ProgressServiceImpl implements ProgressService {
      * 线程安全的CopyOnWriteArrayList，存储所有注册的进度监听器
      */
     private final List<ProgressListener> listeners = new CopyOnWriteArrayList<>();
+    
+    /**
+     * 临时目录清理回调函数
+     * 用于在特定条件下清理临时目录
+     */
+    private Consumer<String> tempDirectoryCleanupCallback;
 
     /**
      * {@inheritDoc}
@@ -123,17 +130,17 @@ public class ProgressServiceImpl implements ProgressService {
         ConvertResult latestEvent = getLatestEvent(id);
         return latestEvent != null && latestEvent.getTimestamp() > lastEventTimestamp;
     }
-    
-    /**
-     * 定时清理已完成的进度信息
-     * <p>
-     * 每小时执行一次，清理完成超过30分钟的进度信息。
-     * 通过移除已完成且超过指定时间的进度信息，防止内存泄漏。
-     * 只清理百分比达到100%且时间戳早于30分钟前的进度信息。
-     * </p>
-     */
 
-    
+    /**
+     * 安排清理任务
+     * <p>
+     * 创建一个新线程，在配置的延迟时间后清理指定ID的进度信息和事件信息。
+     * 这个方法用于防止内存泄漏，确保已完成的任务信息能够及时清理。
+     * 清理延迟时间由ParallelProcessingConfig配置，默认为60秒。
+     * </p>
+     *
+     * @param id 要清理的进度ID
+     */
     private void scheduleCleanup(String id) {
         new Thread(() -> {
             try {
@@ -169,7 +176,18 @@ public class ProgressServiceImpl implements ProgressService {
     @Override
     public void sendCloseEvent(String id, CloseReason closeReason) {
         String reasonMessage = getCloseReasonMessage(closeReason);
-        log.info("发送关闭事件: {}, 原因: {}", id, reasonMessage);
+        log.debug("发送关闭事件: {}, 原因: {}", id, reasonMessage);
+        
+        // 在特定关闭原因下清理临时目录
+        if (tempDirectoryCleanupCallback != null && 
+            (closeReason == CloseReason.HEARTBEAT_TIMEOUT || closeReason == CloseReason.ERROR_OCCURRED)) {
+            try {
+                tempDirectoryCleanupCallback.accept(id);
+                log.debug("已调用临时目录清理回调: {}, 原因: {}", id, reasonMessage);
+            } catch (Exception e) {
+                log.error("临时目录清理回调执行失败: {}, 原因: {}", id, e.getMessage(), e);
+            }
+        }
         
         // 创建一个包含关闭信息的进度对象
         ProgressInfo closeInfo = new ProgressInfo(id, 100, reasonMessage, "关闭连接", 0, 0, true);
@@ -189,11 +207,18 @@ public class ProgressServiceImpl implements ProgressService {
         // 通知监听器
         notifyListeners(id, closeInfo, EventType.CLOSE_EVENT, closeReason);
         
-        log.info("关闭事件已发送: {}, 原因: {}", id, reasonMessage);
+        log.debug("关闭事件已发送: {}, 原因: {}", id, reasonMessage);
     }
     
     /**
      * 根据关闭原因获取对应的消息
+     * <p>
+     * 将CloseReason枚举值转换为用户友好的中文消息。
+     * 用于在发送关闭事件时提供清晰的关闭原因说明。
+     * </p>
+     *
+     * @param closeReason 关闭原因枚举值
+     * @return 对应的中文消息
      */
     private String getCloseReasonMessage(CloseReason closeReason) {
         switch (closeReason) {
@@ -218,11 +243,11 @@ public class ProgressServiceImpl implements ProgressService {
      */
     @Override
     public void sendConvertResultEvent(String id, String filePath, String contentType) {
-        log.info("发送转换结果事件: {}, 文件路径: {}, 内容类型: {}", id, filePath, contentType);
+        log.debug("发送转换结果事件: {}, 文件路径: {}, 内容类型: {}", id, filePath, contentType);
         
         // 创建转换结果对象
         ConvertResult convertResult = new ConvertResult(id, filePath, contentType);
-        log.info("转换结果: {}", convertResult);
+        log.debug("转换结果: {}", convertResult);
         // 添加到事件信息映射
         if (eventMap.containsKey(id)) {
             eventMap.get(id).add(convertResult);
@@ -272,6 +297,11 @@ public class ProgressServiceImpl implements ProgressService {
     
     /**
      * 通知所有相关的监听器
+     * <p>
+     * 创建进度更新事件并通知所有关注该进度ID的监听器。
+     * 监听器可以关注所有进度（progressId为null）或特定进度ID。
+     * 如果通知过程中发生异常，会记录错误日志但不会中断其他监听器的通知。
+     * </p>
      *
      * @param progressId 进度ID
      * @param progressInfo 进度信息
@@ -294,6 +324,11 @@ public class ProgressServiceImpl implements ProgressService {
     
     /**
      * 通知所有相关的监听器（带关闭原因）
+     * <p>
+     * 创建包含关闭原因的进度更新事件并通知所有关注该进度ID的监听器。
+     * 这是notifyListeners方法的重载版本，专门用于处理关闭事件。
+     * 监听器可以根据关闭原因执行不同的处理逻辑。
+     * </p>
      * 
      * @param progressId 进度ID
      * @param progressInfo 进度信息
@@ -317,6 +352,11 @@ public class ProgressServiceImpl implements ProgressService {
     
     /**
      * 通知所有相关的监听器 - 转换结果事件专用
+     * <p>
+     * 创建包含转换结果的进度更新事件并通知所有关注该进度ID的监听器。
+     * 这是专门用于转换结果事件的通知方法，使用ConvertResult对象而不是ProgressInfo。
+     * 监听器可以从事件中获取转换结果的详细信息，如文件路径和内容类型。
+     * </p>
      *
      * @param progressId    进度ID
      * @param convertResult 转换结果信息
@@ -334,5 +374,18 @@ public class ProgressServiceImpl implements ProgressService {
                 }
             }
         }
+    }
+    
+    /**
+     * {@inheritDoc}
+     * <p>
+     * 设置临时目录清理回调函数。
+     * 当收到错误关闭事件或心跳超时事件时，会调用此回调进行清理。
+     * </p>
+     */
+    @Override
+    public void setTempDirectoryCleanupCallback(Consumer<String> cleanupCallback) {
+        this.tempDirectoryCleanupCallback = cleanupCallback;
+        log.debug("已设置临时目录清理回调");
     }
 }

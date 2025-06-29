@@ -1,6 +1,7 @@
 package com.doreamr233.charartconverter.controller;
 
 import cn.hutool.core.io.FileTypeUtil;
+import cn.hutool.core.io.FileUtil;
 import com.doreamr233.charartconverter.enums.CloseReason;
 import com.doreamr233.charartconverter.enums.EventType;
 import com.doreamr233.charartconverter.exception.FileTypeException;
@@ -26,18 +27,18 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import javax.annotation.PostConstruct;
 import javax.servlet.AsyncContext;
 import javax.servlet.AsyncEvent;
 import javax.servlet.AsyncListener;
 import javax.servlet.http.HttpServletRequest;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +49,10 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * 提供字符画转换相关的REST API接口，包括图片转换、获取字符文本、进度监控和健康检查。
  * 该控制器处理前端的HTTP请求，调用相应的服务完成字符画转换功能。
+ * 支持多种图片格式（JPG、PNG、GIF、WebP）的转换，并提供实时进度监控。
  * </p>
+ *
+ * @author doreamr233
  */
 @RestController
 @RequestMapping("/api")
@@ -58,46 +62,73 @@ public class CharArtController {
 
     /**
      * 字符画服务，用于处理图片到字符画的转换
+     * 提供核心的图片转字符画功能
      */
     private final CharArtService charArtService;
     
     /**
      * 进度服务，用于跟踪和报告转换进度
+     * 管理SSE连接和进度事件的发送
      */
     private final ProgressService progressService;
     
     /**
+     * 初始化临时目录清理回调
+     * <p>
+     * 在Bean初始化后设置临时目录清理回调函数，
+     * 当进度任务完成或出错时自动清理相关的临时文件。
+     * </p>
+     */
+    @PostConstruct
+    private void initTempDirectoryCleanup() {
+        // 设置临时目录清理回调
+        progressService.setTempDirectoryCleanupCallback(this::cleanupTempDirectoryForProgress);
+    }
+    
+    /**
      * WebP处理客户端，用于处理WebP动图和健康检查
+     * 与Python WebP处理服务进行通信
      */
     private final WebpProcessorClient webpProcessorClient;
     
     /**
      * 并行处理配置
+     * 包含线程池大小、超时时间等配置参数
      */
     private final ParallelProcessingConfig parallelConfig;
     
     /**
      * 临时目录配置
+     * 管理临时文件的存储路径
      */
     private final TempDirectoryConfig tempDirectoryConfig;
 
     /**
      * WebP处理服务是否启用
+     * 控制是否支持WebP动图处理功能
      */
     @Value("${webp-processor.enabled}")
     private boolean isWebpProcessorEnabled;
 
     /**
      * 默认字符密度，可选值为"low"、"medium"、"high"
+     * 控制字符画的精细程度
      */
     @Value("${char-art.default-density}")
     private final static String defaultDensity = "medium";
 
     /**
      * 默认颜色模式，可选值为"color"、"colorBackground"、"grayscale"
+     * 控制字符画的颜色显示方式
      */
     @Value("${char-art.default-color-mode}")
     private final static String defaultColorMode = "grayscale";
+    
+    /**
+     * 存储进度ID到临时目录路径的映射关系
+     * 用于在特定条件下清理临时文件夹
+     */
+    private final Map<String, Path> progressTempDirMap = new ConcurrentHashMap<>();
 
     /**
      * 将图片转换为字符画（异步接口）
@@ -125,18 +156,28 @@ public class CharArtController {
         
         try {
             String originalFilename = imageFile.getOriginalFilename();
-            log.info("接收到图片转换请求: {}, 密度: {}, 颜色模式: {}, 限制尺寸: {}", 
+            log.debug("接收到图片转换请求: {}, 密度: {}, 颜色模式: {}, 限制尺寸: {}", 
                     originalFilename, density, colorMode, limitSize);
             
             // 使用前端传递的progressId，如果没有则生成一个新的
             String progressId = (progressIdParam != null && !progressIdParam.isEmpty()) 
                 ? progressIdParam : UUID.randomUUID().toString();
             
-            log.info("使用进度ID: {}", progressId);
+            log.debug("使用进度ID: {}", progressId);
+
+            // 在处理前先读取文件内容到字节数组，避免多次读取InputStream
+            byte[] fileBytes;
+            try {
+                fileBytes = imageFile.getBytes();
+                log.debug("已读取上传文件到内存，大小: {} 字节", fileBytes.length);
+            } catch (Exception e) {
+                log.error("读取上传文件失败: {}", e.getMessage(), e);
+                throw new ServiceException("读取上传文件失败: " + e.getMessage(), e);
+            }
 
             // 判断文件类型
-            String fileType = FileTypeUtil.getType(imageFile.getInputStream());
-            log.info("传入的图片类型: {}", fileType);
+            String fileType = FileTypeUtil.getType(new java.io.ByteArrayInputStream(fileBytes));
+            log.debug("传入的图片类型: {}", fileType);
             
             // 验证文件类型是否支持
             if (fileType == null || !(fileType.equals("jpg") || fileType.equals("jpeg") || 
@@ -152,16 +193,22 @@ public class CharArtController {
 
             // 异步执行转换任务
             CompletableFuture.runAsync(() -> {
-                Path tempFile = null;
+                Path tempDir;
+                Path tempFile;
                 Path resultFile;
                 try {
+                    // 为此次转换创建专用的临时目录
+                    tempDir = CharArtProcessor.createTempDirectoryForFile(originalFilename);
+                    // 注册临时目录映射关系
+                    registerTempDirectory(progressId, tempDir);
+                    log.debug("为进度ID: {} 创建临时目录: {}", progressId, tempDir);
                     // 将上传的文件保存为临时文件，以便多次读取
                     // 提取文件扩展名，确保临时文件具有正确的扩展名
                     String fileExtension = getString(originalFilename, fileType);
-
-                    log.info("使用文件扩展名: {}", fileExtension);
-                    tempFile = CharArtProcessor.createTempFile("upload_", fileExtension);
-                    imageFile.transferTo(tempFile.toFile());
+                    log.debug("使用文件扩展名: {}", fileExtension);
+                    tempFile = CharArtProcessor.createTempFileInDirectory(tempDir, "upload_", fileExtension);
+                    // 使用字节数组写入文件，而不是InputStream
+                    FileUtil.writeBytes(fileBytes, tempFile.toFile());
 
                     boolean isGif = originalFilename != null && originalFilename.toLowerCase().endsWith(".gif") && "gif".equals(fileType);
                     boolean isWebp = originalFilename != null && originalFilename.toLowerCase().endsWith(".webp") && "webp".equals(fileType);
@@ -170,7 +217,7 @@ public class CharArtController {
                     // 如果是webp格式，判断是否为动图
                     if (isWebp) {
                         isAnimated = CharArtProcessor.isWebpAnimated(tempFile);
-                        log.info("WebP图片是否为动图: {}", isAnimated);
+                        log.debug("WebP图片是否为动图: {}", isAnimated);
                     }
 
                     if (isWebp && isAnimated && !isWebpProcessorEnabled) {
@@ -181,14 +228,15 @@ public class CharArtController {
                     byte[] result;
                     try {
                         result = charArtService.convertToCharArt(
-                                Files.newInputStream(tempFile),
+                                FileUtil.getInputStream(tempFile.toFile()),
                                 originalFilename,
                                 density,
                                 colorMode,
                                 progressId,
-                                limitSize
+                                limitSize,
+                                tempDir
                         );
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         // 将IOException包装为ServiceException
                         throw new ServiceException("读取临时文件失败: " + e.getMessage(), e);
                     }
@@ -229,20 +277,19 @@ public class CharArtController {
                         resultExtension = ".webp";
                     }
 
-                    // 将结果保存到临时文件
+                    // 将结果保存到专用临时目录中
                     String resultFileName = "result_" + progressId + resultExtension;
-                    String tempDir = tempDirectoryConfig.getTempDirectory();
-                    resultFile = Path.of(tempDir, resultFileName);
-                    Files.write(resultFile, result);
+                    resultFile = tempDir.resolve(resultFileName);
+                    FileUtil.writeBytes(result, resultFile.toFile());
                     
-                    // 构建相对路径（相对于临时目录）
-                    String relativePath = resultFile.getFileName().toString();
-                    log.info("已保存结果到临时文件: {}", relativePath);
+                    // 构建相对路径（包含临时文件夹）
+                    String relativePath = tempDir.getFileName().toString() + "/" + resultFile.getFileName().toString();
+                    log.debug("已保存结果到临时文件: {}", relativePath);
                     
                     // 通过SSE发送转换结果
                     progressService.sendConvertResultEvent(progressId, relativePath, contentType);
                     
-                    log.info("图片转换完成，进度ID: {}, 文件路径: {}", progressId, relativePath);
+                    log.debug("图片转换完成，进度ID: {}, 文件路径: {}", progressId, relativePath);
 
                     // 转换完成，发送关闭SSE消息
                     progressService.sendCloseEvent(progressId, CloseReason.TASK_COMPLETED);
@@ -250,19 +297,12 @@ public class CharArtController {
                     log.error("异步转换图片失败，进度ID: {}", progressId, e);
                     // 发送错误事件
                     progressService.updateProgress(progressId, 0, "转换失败: " + e.getMessage(), "错误", 0, 0, true);
-                } finally {
-                    // 清理临时文件
-                    if (tempFile != null) {
-                        try {
-                            Files.deleteIfExists(tempFile);
-                        } catch (IOException e) {
-                            log.warn("删除临时文件失败: {}", tempFile, e);
-                        }
-                    }
+                    // Java端报错时发送错误关闭事件，由ProgressService统一处理临时文件清理
+                    progressService.sendCloseEvent(progressId, CloseReason.ERROR_OCCURRED);
                 }
             });
 
-            log.info("异步转换任务已启动，进度ID: {}", progressId);
+            log.debug("异步转换任务已启动，进度ID: {}", progressId);
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(response);
@@ -287,6 +327,42 @@ public class CharArtController {
         }
         return fileExtension;
     }
+    
+    /**
+     * 注册临时目录映射关系
+     * <p>
+     * 将进度ID与对应的临时目录路径建立映射关系，
+     * 便于后续根据进度ID清理相关的临时文件。
+     * </p>
+     *
+     * @param progressId 进度ID，用于标识特定的转换任务
+     * @param tempDir 临时目录路径，存储该任务相关的临时文件
+     */
+    private void registerTempDirectory(String progressId, Path tempDir) {
+        progressTempDirMap.put(progressId, tempDir);
+        log.debug("注册临时目录映射: {} -> {}", progressId, tempDir);
+    }
+    
+    /**
+     * 清理指定进度ID的临时文件夹
+     * <p>
+     * 根据进度ID查找对应的临时目录，并删除该目录及其所有内容。
+     * 这是一个回调方法，由ProgressService在适当的时机调用。
+     * </p>
+     *
+     * @param progressId 进度ID，用于查找要清理的临时目录
+     */
+    public void cleanupTempDirectoryForProgress(String progressId) {
+        Path tempDir = progressTempDirMap.remove(progressId);
+        if (tempDir != null) {
+            try {
+                CharArtProcessor.deleteTempDirectory(tempDir);
+                log.debug("已清理临时文件夹: {}", tempDir);
+            } catch (Exception e) {
+                log.error("清理临时文件夹失败: {}", tempDir, e);
+            }
+        }
+    }
 
     /**
      * 获取字符画文本
@@ -302,8 +378,8 @@ public class CharArtController {
      */
     @GetMapping("/text")
     public ResponseEntity<Map<String,Object>> getCharText(
-            @RequestParam("filename") String filename) throws Exception {
-        log.info("接收到获取字符画文本请求: {}", filename);
+            @RequestParam("filename") String filename) {
+        log.debug("接收到获取字符画文本请求: {}", filename);
         Map<String,Object> result = charArtService.getCharText(filename);
         return ResponseEntity.ok()
             .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
@@ -332,7 +408,7 @@ public class CharArtController {
     @GetMapping(value = "/progress/{id}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter getProgress(
             @PathVariable String id) {
-        log.info("收到进度请求: {}", id);
+        log.debug("收到进度请求: {}", id);
         
         // 创建一个SSE发射器
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
@@ -356,13 +432,15 @@ public class CharArtController {
         });
         
         emitter.onCompletion(() -> {
-            log.info("SSE连接完成: {}", id);
+            log.debug("SSE连接完成: {}", id);
             progressService.removeProgressListener(listener);
         });
         
         emitter.onTimeout(() -> {
-            log.info("SSE连接超时: {}", id);
+            log.debug("Vue端SSE连接超时: {}", id);
             progressService.removeProgressListener(listener);
+            // Vue端SSE心跳超时时发送超时关闭事件，由ProgressService统一处理临时文件清理
+            progressService.sendCloseEvent(id, CloseReason.HEARTBEAT_TIMEOUT);
         });
         
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -400,9 +478,9 @@ public class CharArtController {
                             if (event.getEventType() == EventType.CLOSE_EVENT) {
                                 // 根据关闭原因决定是否记录日志
                                 if (event.getCloseReason() == CloseReason.TASK_COMPLETED) {
-                                    log.info("任务完成，正常关闭SSE连接: {}", id);
+                                    log.debug("任务完成，正常关闭SSE连接: {}", id);
                                 } else {
-                                    log.info("收到关闭事件，准备完成SSE连接: {}, 原因: {}", id, event.getCloseReason());
+                                    log.debug("收到关闭事件，准备完成SSE连接: {}, 原因: {}", id, event.getCloseReason());
                                 }
                                 try {
                                     emitter.complete();
@@ -419,7 +497,7 @@ public class CharArtController {
                         }
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        log.info("SSE处理线程被中断: {}", id);
+                        log.debug("SSE处理线程被中断: {}", id);
                         break;
                     }
                 }
@@ -462,6 +540,15 @@ public class CharArtController {
     
     /**
      * 处理进度事件
+     * <p>
+     * 根据事件类型将进度更新事件转换为相应的SSE事件格式，
+     * 并通过SseEmitter发送给客户端。支持进度更新、转换结果
+     * 和连接关闭等多种事件类型。
+     * </p>
+     *
+     * @param emitter SSE发射器，用于向客户端发送事件
+     * @param event 进度更新事件，包含事件类型和相关数据
+     * @throws Exception 发送事件时可能抛出的异常
      */
     private void handleProgressEvent(SseEmitter emitter, ProgressUpdateEvent event) throws Exception {
         String eventName;
@@ -519,7 +606,7 @@ public class CharArtController {
         if ("ERROR_OCCURRED".equals(closeReason) || "HEARTBEAT_TIMEOUT".equals(closeReason)) {
             log.warn("接收到关闭进度连接请求: {}, 原因: {}", id, closeReason);
         } else {
-            log.info("接收到关闭进度连接请求: {}, 原因: {}", id, closeReason != null ? closeReason : "TASK_COMPLETED");
+            log.debug("接收到关闭进度连接请求: {}, 原因: {}", id, closeReason != null ? closeReason : "TASK_COMPLETED");
         }
         
         Map<String, Object> result = new HashMap<>();
@@ -561,7 +648,7 @@ public class CharArtController {
     @GetMapping("/webp-progress-url/{taskId}")
     public ResponseEntity<Map<String, Object>> getWebpProgressUrl(
             @PathVariable String taskId) {
-        log.info("接收到获取WebP进度流URL请求: {}", taskId);
+        log.debug("接收到获取WebP进度流URL请求: {}", taskId);
         Map<String, Object> result = new HashMap<>();
         
         if (!isWebpProcessorEnabled) {
@@ -614,12 +701,12 @@ public class CharArtController {
                 response.put("webpProcessor", "DOWN");
                 response.put("message", "字符画转换服务正常，Webp处理服务异常");
             }
-            log.info("健康检查: 主服务状态=UP, Flask服务状态={}", flaskServiceAvailable ? "UP" : "DOWN");
+            log.debug("健康检查: 主服务状态=UP, Flask服务状态={}", flaskServiceAvailable ? "UP" : "DOWN");
         }else{
             response.put("status", "UP");
             response.put("webpProcessor", "OFF");
             response.put("message", "字符画转换服务正常运行，Webp处理服务未开启");
-            log.info("健康检查: 主服务状态=UP, Flask服务状态=OFF");
+            log.debug("健康检查: 主服务状态=UP, Flask服务状态=OFF");
         }
         return response;
     }
@@ -632,31 +719,35 @@ public class CharArtController {
      * 成功返回图片数据后，不会删除原文件，由调用方负责文件的管理。
      * </p>
      *
-     * @param filePath 临时文件的路径（相对于系统临时目录的路径）
+     * @param tempDirName 临时文件夹名称
+     * @param fileName 文件名
      * @return 包含图片数据的HTTP响应
      */
-    @GetMapping("/get-temp-image/{filePath:.+}")
+    @GetMapping("/get-temp-image/{tempDirName}/{fileName:.+}")
     public ResponseEntity<byte[]> getTempImage(
-            @PathVariable String filePath, HttpServletRequest request) {
-        log.info("接收到获取临时图片请求: {}", filePath);
+            @PathVariable String tempDirName, 
+            @PathVariable String fileName, 
+            HttpServletRequest request) {
+        log.debug("接收到获取临时图片请求: 临时文件夹={}, 文件名={}", tempDirName, fileName);
         
         try {
-            // URL解码文件路径
-            String decodedFilePath = java.net.URLDecoder.decode(filePath, StandardCharsets.UTF_8);
-            log.info("解码后的文件路径: {}", decodedFilePath);
+            // URL解码参数
+            String decodedTempDirName = java.net.URLDecoder.decode(tempDirName, StandardCharsets.UTF_8);
+            String decodedFileName = java.net.URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+            log.debug("解码后的参数: 临时文件夹={}, 文件名={}", decodedTempDirName, decodedFileName);
             
             // 构建完整的文件路径（基于配置的临时目录）
             String tempDir = tempDirectoryConfig.getTempDirectory();
-            final Path fullPath = Path.of(tempDir, decodedFilePath);
+            final Path fullPath = Path.of(tempDir, decodedTempDirName, decodedFileName);
             
             // 检查文件是否存在
-            if (!Files.exists(fullPath)) {
+            if (!FileUtil.exist(fullPath.toFile())) {
                 log.warn("请求的临时文件不存在: {}", fullPath);
                 return ResponseEntity.notFound().build();
             }
             
             // 检查文件是否是图片
-            String fileName = fullPath.getFileName().toString().toLowerCase();
+            fileName = fullPath.getFileName().toString().toLowerCase();
             if (!fileName.endsWith(".png") && !fileName.endsWith(".jpg") && 
                 !fileName.endsWith(".jpeg") && !fileName.endsWith(".gif") && 
                 !fileName.endsWith(".bmp") && !fileName.endsWith(".webp")) {
@@ -665,7 +756,7 @@ public class CharArtController {
             }
             
             // 读取文件内容
-            byte[] imageData = Files.readAllBytes(fullPath);
+            byte[] imageData = FileUtil.readBytes(fullPath.toFile());
             
             // 设置适当的Content-Type
             String contentType = "image/jpeg"; // 默认
@@ -679,7 +770,7 @@ public class CharArtController {
                 contentType = "image/webp";
             }
             
-            log.info("成功获取临时图片: {}, 大小: {} 字节", fullPath, imageData.length);
+            log.debug("成功获取临时图片: {}, 大小: {} 字节", fullPath, imageData.length);
             
             // 启用异步处理，以便在响应完成后执行清理操作
             AsyncContext asyncContext = request.startAsync();
@@ -687,20 +778,18 @@ public class CharArtController {
                 @Override
                 public void onComplete(AsyncEvent event) {
                     try {
-                        if (Files.exists(fullPath)) {
+                        if (FileUtil.exist(fullPath.toFile())) {
                             // 获取文件所在的目录路径
                             Path dirPath = fullPath.getParent();
                             // 删除文件
-                            Files.delete(fullPath);
-                            log.info("文件已成功传输并删除: {}", fullPath);
+                            FileUtil.del(fullPath.toFile());
+                            log.debug("文件已成功传输并删除: {}", fullPath);
 
                             // 检查目录是否为空，如果为空则删除
-                            if (Files.exists(dirPath)) {
-                                try (var stream = Files.list(dirPath)) {
-                                    if (stream.findAny().isEmpty()) {
-                                        Files.delete(dirPath);
-                                        log.info("空文件夹已删除: {}", dirPath);
-                                    }
+                            if (FileUtil.exist(dirPath.toFile())) {
+                                if (FileUtil.isDirEmpty(dirPath.toFile())) {
+                                    FileUtil.del(dirPath.toFile());
+                                    log.debug("空文件夹已删除: {}", dirPath);
                                 }
                             }
                         }

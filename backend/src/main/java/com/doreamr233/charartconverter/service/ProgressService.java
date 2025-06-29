@@ -1,7 +1,6 @@
 package com.doreamr233.charartconverter.service;
 
 import com.doreamr233.charartconverter.enums.CloseReason;
-import com.doreamr233.charartconverter.event.ProgressUpdateEvent;
 import com.doreamr233.charartconverter.model.ConvertResult;
 import com.doreamr233.charartconverter.model.ProgressInfo;
 import com.doreamr233.charartconverter.listener.ProgressListener;
@@ -154,5 +153,16 @@ public interface ProgressService {
      * @param progressId 进度ID
      */
     void removeListenersForProgress(String progressId);
+    
+    /**
+     * 设置临时目录清理回调
+     * <p>
+     * 设置一个回调函数，用于在特定条件下清理临时目录。
+     * 当收到错误关闭事件或心跳超时事件时，会调用此回调进行清理。
+     * </p>
+     *
+     * @param cleanupCallback 清理回调函数，接收进度ID作为参数
+     */
+    void setTempDirectoryCleanupCallback(java.util.function.Consumer<String> cleanupCallback);
 
 }

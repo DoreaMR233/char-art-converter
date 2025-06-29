@@ -1,13 +1,15 @@
 package com.doreamr233.charartconverter.config;
 
+import com.doreamr233.charartconverter.util.CharArtProcessor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
+import cn.hutool.core.io.FileUtil;
 import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -21,6 +23,7 @@ import java.nio.file.Paths;
  *
  * @author doreamr233
  */
+@Getter
 @Component
 @Configuration
 @Slf4j
@@ -29,18 +32,13 @@ public class TempDirectoryConfig {
     /**
      * 临时目录路径，从配置文件中读取
      * 如果配置文件中未设置，则使用系统默认临时目录
+     * -- GETTER --
+     *  获取临时目录路径
+     *
+
      */
     @Value("${char-art.temp-directory:#{systemProperties['java.io.tmpdir']}}")
     private String tempDirectory;
-
-    /**
-     * 获取临时目录路径
-     *
-     * @return 临时目录路径字符串
-     */
-    public String getTempDirectory() {
-        return tempDirectory;
-    }
 
     /**
      * 获取临时目录Path对象
@@ -68,7 +66,7 @@ public class TempDirectoryConfig {
                 // 相对路径基于当前工作目录
                 tempPath = Paths.get(System.getProperty("user.dir")).resolve(tempDirectory);
                 tempDirectory = tempPath.toString();
-                log.info("相对路径转换为绝对路径: {}", tempDirectory);
+                log.debug("相对路径转换为绝对路径: {}", tempDirectory);
             }
             
             // 规范化路径（处理.和..等）
@@ -76,9 +74,9 @@ public class TempDirectoryConfig {
             tempDirectory = tempPath.toString();
             
             // 如果目录不存在，则创建
-            if (!Files.exists(tempPath)) {
-                Files.createDirectories(tempPath);
-                log.info("创建临时目录: {}", tempDirectory);
+            if (!FileUtil.exist(tempPath.toFile())) {
+                FileUtil.mkdir(tempPath.toFile());
+                log.debug("创建临时目录: {}", tempDirectory);
             }
             
             // 验证目录权限
@@ -95,7 +93,7 @@ public class TempDirectoryConfig {
                 throw new RuntimeException("指定的路径不是目录: " + tempDirectory);
             }
             
-            log.info("临时目录配置完成: {} (操作系统: {})", tempDirectory, System.getProperty("os.name"));
+            log.debug("临时目录配置完成: {} (操作系统: {})", tempDirectory, System.getProperty("os.name"));
             
         } catch (Exception e) {
             log.error("初始化临时目录失败: {}", tempDirectory, e);
@@ -104,5 +102,9 @@ public class TempDirectoryConfig {
             log.warn("回退到系统默认临时目录: {}", systemTempDir);
             tempDirectory = systemTempDir;
         }
+        
+        // 初始化CharArtProcessor的静态配置，确保一致性
+        CharArtProcessor.setTempDirectoryConfig(this);
+        log.debug("已初始化CharArtProcessor的临时目录配置");
     }
 }
